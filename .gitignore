@@ -1,0 +1,10 @@
+--- ignore all data ---
+all_data/*
+*.csv
+*.xlsx
+tennis/all_data/*
+*.zip
+
+
+
+
