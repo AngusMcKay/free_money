@@ -78,8 +78,8 @@ divFeatures = ['N1', 'E1', 'SC3', 'SC2', 'D1', 'B1', 'I2', 'G1', 'E3', 'T1', 'EC
 bookiesFeatures = ['PSHprob','PSDprob','PSAprob','PSbookiesgain']
 
 # remove rows which don't have sufficient past history
-past_features_to_include = 20
-past_features_to_include_alternative = 20
+past_features_to_include = 10
+past_features_to_include_alternative = 10
 combined_data_added_features_with_history = combined_data_added_features[combined_data_added_features['homePRYear'+str(past_features_to_include)].notnull()]
 
 # optional: remove rows without corners history etc
@@ -90,11 +90,11 @@ combined_data_added_features_with_history = combined_data_added_features_with_hi
 
 # train one model on all data to get initial weights
 # then bootstrap data and train 19 more models (hopefully only have to do a few iterations for each given initial weights)
-train_to_season = 2017
+train_to_season = 2016
 predictors = ['seasonWeek']+homeWDLfeatures_W[:past_features_to_include]+homeWDLfeatures_D[:past_features_to_include]+homeWDLfeatures_L[:past_features_to_include]+homeGoalsForfeatures[:past_features_to_include]+homeGoalsAgainstfeatures[:past_features_to_include]+homePROppositionPointsfeatures[:past_features_to_include]+awayWDLfeatures_W[:past_features_to_include]+awayWDLfeatures_D[:past_features_to_include]+awayWDLfeatures_L[:past_features_to_include]+awayGoalsForfeatures[:past_features_to_include]+awayGoalsAgainstfeatures[:past_features_to_include]+awayPROppositionPointsfeatures[:past_features_to_include]+divFeatures+homePRIsHomeFeatures+awayPRIsHomeFeatures+homePRShotsForFeatures[:past_features_to_include]+homePRShotsAgainstFeatures[:past_features_to_include]+homePRSOTForFeatures[:past_features_to_include]+homePRSOTAgainstFeatures[:past_features_to_include]+homePRFoulsForFeatures[:past_features_to_include]+homePRFoulsAgainstFeatures[:past_features_to_include]+homePRYellowsForFeatures[:past_features_to_include]+homePRYellowsAgainstFeatures[:past_features_to_include]+homePRRedsForFeatures[:past_features_to_include]+homePRRedsAgainstFeatures[:past_features_to_include]+awayPRShotsForFeatures[:past_features_to_include]+awayPRShotsAgainstFeatures[:past_features_to_include]+awayPRSOTForFeatures[:past_features_to_include]+awayPRSOTAgainstFeatures[:past_features_to_include]+awayPRFoulsForFeatures[:past_features_to_include]+awayPRFoulsAgainstFeatures[:past_features_to_include]+awayPRYellowsForFeatures[:past_features_to_include]+awayPRYellowsAgainstFeatures[:past_features_to_include]+awayPRRedsForFeatures[:past_features_to_include]+awayPRRedsAgainstFeatures[:past_features_to_include]+bookiesFeatures
-predictors_alt = ['seasonWeek']+homeWDLfeatures_W[:past_features_to_include]+homeWDLfeatures_D[:past_features_to_include]+homeWDLfeatures_L[:past_features_to_include]+homeGoalsForfeatures[:past_features_to_include]+homeGoalsAgainstfeatures[:past_features_to_include]+homePROppositionPointsfeatures[:past_features_to_include]+awayWDLfeatures_W[:past_features_to_include]+awayWDLfeatures_D[:past_features_to_include]+awayWDLfeatures_L[:past_features_to_include]+awayGoalsForfeatures[:past_features_to_include]+awayGoalsAgainstfeatures[:past_features_to_include]+awayPROppositionPointsfeatures[:past_features_to_include]+divFeatures+homePRIsHomeFeatures+awayPRIsHomeFeatures+homePRShotsForFeatures[:past_features_to_include]+homePRShotsAgainstFeatures[:past_features_to_include]+homePRSOTForFeatures[:past_features_to_include]+homePRSOTAgainstFeatures[:past_features_to_include]+homePRFoulsForFeatures[:past_features_to_include]+homePRFoulsAgainstFeatures[:past_features_to_include]+homePRYellowsForFeatures[:past_features_to_include]+homePRYellowsAgainstFeatures[:past_features_to_include]+homePRRedsForFeatures[:past_features_to_include]+homePRRedsAgainstFeatures[:past_features_to_include]+awayPRShotsForFeatures[:past_features_to_include]+awayPRShotsAgainstFeatures[:past_features_to_include]+awayPRSOTForFeatures[:past_features_to_include]+awayPRSOTAgainstFeatures[:past_features_to_include]+awayPRFoulsForFeatures[:past_features_to_include]+awayPRFoulsAgainstFeatures[:past_features_to_include]+awayPRYellowsForFeatures[:past_features_to_include]+awayPRYellowsAgainstFeatures[:past_features_to_include]+awayPRRedsForFeatures[:past_features_to_include]+awayPRRedsAgainstFeatures[:past_features_to_include]
-train_x = combined_data_added_features_with_history[predictors][combined_data_added_features_with_history['seasonEndYear']!=train_to_season].values
-train_x_alt = combined_data_added_features_with_history[predictors_alt][combined_data_added_features_with_history['seasonEndYear']!=train_to_season].values
+predictors_alt = ['seasonWeek']+homeWDLfeatures_W[:past_features_to_include]+homeWDLfeatures_D[:past_features_to_include]+homeWDLfeatures_L[:past_features_to_include]+homeGoalsForfeatures[:past_features_to_include]+homeGoalsAgainstfeatures[:past_features_to_include]+homePROppositionPointsfeatures[:past_features_to_include]+awayWDLfeatures_W[:past_features_to_include]+awayWDLfeatures_D[:past_features_to_include]+awayWDLfeatures_L[:past_features_to_include]+awayGoalsForfeatures[:past_features_to_include]+awayGoalsAgainstfeatures[:past_features_to_include]+awayPROppositionPointsfeatures[:past_features_to_include]+divFeatures+homePRIsHomeFeatures+awayPRIsHomeFeatures+homePRShotsForFeatures[:past_features_to_include]+homePRShotsAgainstFeatures[:past_features_to_include]+homePRSOTForFeatures[:past_features_to_include]+homePRSOTAgainstFeatures[:past_features_to_include]+awayPRShotsForFeatures[:past_features_to_include]+awayPRShotsAgainstFeatures[:past_features_to_include]+awayPRSOTForFeatures[:past_features_to_include]+awayPRSOTAgainstFeatures[:past_features_to_include]
+train_x = combined_data_added_features_with_history[predictors][combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values
+train_x_alt = combined_data_added_features_with_history[predictors_alt][combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values
 train_col_means = train_x.mean(axis=0)
 train_col_stds = train_x.astype(float).std(axis=0)*10
 train_col_stds = train_col_stds + (train_col_stds==0)*1 # adds 1 where the stdev is 0 to not break division
@@ -102,7 +102,7 @@ subset = [predictor in predictors_alt for predictor in predictors]
 train_x = (train_x - train_col_means)/train_col_stds
 train_x_alt = (train_x_alt - train_col_means[subset])/(train_col_stds[subset])
 
-train_y = (pd.get_dummies(combined_data_added_features_with_history['FTR']))[combined_data_added_features_with_history['seasonEndYear']!=train_to_season].values
+train_y = (pd.get_dummies(combined_data_added_features_with_history['FTR']))[combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values
 #train_y_alt = (pd.get_dummies(combined_data_added_features_with_history['FTR']))[combined_data_added_features_with_history['seasonEndYear']==train_to_season].values
 test_x = combined_data_added_features_with_history[predictors][combined_data_added_features_with_history['seasonEndYear']==(train_to_season+1)].values
 test_x_alt = combined_data_added_features_with_history[predictors_alt][combined_data_added_features_with_history['seasonEndYear']==(train_to_season+1)].values
@@ -124,8 +124,8 @@ number_epochs_init=50
 batch_sizes=2**7
 val_split=0.1
 dropout = 0.0
-weights = 1/np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']!=train_to_season])
-#weights = (combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))[combined_data_added_features_with_history['seasonEndYear']!=train_to_season].values/max(combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))
+weights = 1/np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']<=train_to_season])
+#weights = (combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))[combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values/max(combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))
 #weights = np.zeros(train_x.shape[0])+1
 weights_alt = np.zeros(train_x.shape[0])+np.mean(weights)#min(weights)+max(weights)-weights
 
@@ -249,13 +249,13 @@ predictions_and_bets['Hpreds_mean'] = np.mean(predictions_and_bets[HpredsList], 
 predictions_and_bets['Hpreds_sd'] = np.std(predictions_and_bets[HpredsList], axis=1)
 
 # calculate lower probability for a given confidence
-confidence = 0.7
+confidence = 0.95
 predictions_and_bets['Alower_confidence'] = norm.ppf(1-confidence, predictions_and_bets['Apreds_mean'], predictions_and_bets['Apreds_sd'])
 predictions_and_bets['Dlower_confidence'] = norm.ppf(1-confidence, predictions_and_bets['Dpreds_mean'], predictions_and_bets['Dpreds_sd'])
 predictions_and_bets['Hlower_confidence'] = norm.ppf(1-confidence, predictions_and_bets['Hpreds_mean'], predictions_and_bets['Hpreds_sd'])
 
 # assign bets based on the lower confidence probability being above a threshold higher than the bookies' probability
-probability_margin = 0.05
+probability_margin = 0.01
 predictions_and_bets['Alower_conf_based_bets'] = (predictions_and_bets['Alower_confidence']>(1/predictions_and_bets['PSA']+probability_margin))*1
 predictions_and_bets['Dlower_conf_based_bets'] = (predictions_and_bets['Dlower_confidence']>(1/predictions_and_bets['PSD']+probability_margin))*1
 predictions_and_bets['Hlower_conf_based_bets'] = (predictions_and_bets['Hlower_confidence']>(1/predictions_and_bets['PSH']+probability_margin))*1
@@ -311,7 +311,7 @@ plt.plot(predictions_and_bets['CombCumulativeReturn'])
 # 2. bet amounts based on probability of losing (to limit drawdown), e.g. want less than 1% chance of losing 10% through consecutive losing bets
 # e.g. if 0.9 chance of losing then 0.9**10 = 0.34 chance of losing 10 in a row
 # so want to bet (10/x)% where x is solution to 0.9**x = 0.01, i.e. prop_bet = 10/(log(0.01)/log(0.9))
-max_drawdown = 0.2
+max_drawdown = 0.1
 prob_max_drawdown = 0.01
 
 predictions_and_bets['Apred_minus_odds_prob'] = predictions_and_bets['Alower_confidence'] - (1/predictions_and_bets['PSA']) - probability_margin
