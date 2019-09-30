@@ -94,8 +94,8 @@ number_epochs=20
 batch_sizes=2**7
 val_split=0.1
 dropout = 0.0
-#weights = np.zeros(train_x.shape[0])+1
-#weights_alt = np.zeros(train_x.shape[0])+1
+weights = np.zeros(train_x.shape[0])+1
+weights_alt = np.zeros(train_x.shape[0])+1
 weights_deviance_from_1 = 0.1
 weights = (1 - weights_deviance_from_1) + np.asarray(mens_data_sql_processed_with_history['player1Wins'][mens_data_sql_processed_with_history['date']<train_to_date]*weights_deviance_from_1*2)
 weights_alt = (1 + weights_deviance_from_1) - np.asarray(mens_data_sql_processed_with_history['player1Wins'][mens_data_sql_processed_with_history['date']<train_to_date]*weights_deviance_from_1*2)
@@ -114,10 +114,10 @@ model1.add(Dense(input_dimension, activation='relu',
            kernel_regularizer=regularizers.l1(0.0005),
            #activity_regularizer=regularizers.l1(0.01)
            ))
-#model1.add(Dense(input_dimension, activation='relu',
-#           #kernel_regularizer=regularizers.l1(0.0005),
-#           #activity_regularizer=regularizers.l1(0.01)
-#           ))
+model1.add(Dense(input_dimension, activation='relu',
+           kernel_regularizer=regularizers.l1(0.0005),
+           #activity_regularizer=regularizers.l1(0.01)
+           ))
 #model1.add(Dense(input_dimension, activation='relu',
 #           #kernel_regularizer=regularizers.l1(0.0005),
 #           #activity_regularizer=regularizers.l1(0.01)

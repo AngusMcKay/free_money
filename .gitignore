@@ -4,7 +4,7 @@ all_data/*
 *.xlsx
 tennis/all_data/*
 *.zip
-
+*.json
 
 
 

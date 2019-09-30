@@ -138,7 +138,7 @@ number_epochs2=50
 batch_sizes=2**7
 val_split=0.1
 dropout = 0.0
-weights = 1/np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']<=train_to_season])
+weights = np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']<=train_to_season])
 #weights = (combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))[combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values/max(combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))
 #weights = np.zeros(train_x.shape[0])+1
 weights_alt = weights#np.zeros(train_x.shape[0])+1

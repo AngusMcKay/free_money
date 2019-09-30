@@ -124,7 +124,7 @@ number_epochs_init=50
 batch_sizes=2**7
 val_split=0.1
 dropout = 0.0
-weights = 1/np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']<=train_to_season])
+weights = np.array(((combined_data_added_features_with_history['FTR']=='H')*combined_data_added_features_with_history['B365H']+(combined_data_added_features_with_history['FTR']=='D')*combined_data_added_features_with_history['B365D']+(combined_data_added_features_with_history['FTR']=='A')*combined_data_added_features_with_history['B365A'])[combined_data_added_features_with_history['seasonEndYear']<=train_to_season])
 #weights = (combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))[combined_data_added_features_with_history['seasonEndYear']<=train_to_season].values/max(combined_data_added_features_with_history['seasonEndYear']-min(combined_data_added_features_with_history['seasonEndYear']))
 #weights = np.zeros(train_x.shape[0])+1
 weights_alt = np.zeros(train_x.shape[0])+np.mean(weights)#min(weights)+max(weights)-weights
@@ -208,7 +208,7 @@ for i in range(len(model_list)):
     print('refitting model ', i+2)
     model_list[i].load_weights("models/model2016withBookiesOdds.h5")
     model_list[i].compile(loss='categorical_crossentropy', optimizer=optim_sgd, metrics=['accuracy'])
-    model_list[i].fit(train_x_alt[samples[i],:],train_y[samples[i],:],epochs=number_epochs_refit,batch_size=batch_sizes,validation_split=val_split, sample_weight=weights_list[i][samples[i]])
+    model_list[i].fit(train_x_alt[samples[i],:],train_y[samples[i],:],epochs=number_epochs_refit,batch_size=batch_sizes,validation_split=val_split, sample_weight=weights[samples[i]])#weights_list[i][samples[i]])
 
 # use this bit of code to train some models more if need be
 #model=20
