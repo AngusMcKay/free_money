@@ -1,4 +1,6 @@
-
+'''
+exploration of data extraced from totepoolliveinfo with the extract_historic_data.py scipt
+'''
 
 import pandas as pd
 import numpy as np
