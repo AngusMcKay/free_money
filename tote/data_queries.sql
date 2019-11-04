@@ -249,7 +249,7 @@ SELECT COUNT(1) FROM training_data_10_pr;
 SELECT COUNT(1) FROM training_data_5_pr_no_nrs;
 SELECT COUNT(1) FROM training_data_10_pr_no_nrs;
 
-SELECT COUNT(1) FROM training_data_10_pr_no_nrs
+SELECT * FROM training_data_10_pr_no_nrs
 WHERE 1
 AND pr_1_horse_time IS NOT NULL
 AND pr_2_horse_time IS NOT NULL
@@ -275,3 +275,6 @@ AND pr_10_did_not_finish =0
 ;
 
 
+SELECT COUNT(DISTINCT race_id) FROM training_data_10_pr_no_nrs LIMIT 100;
+SELECT COUNT(1) FROM training_data_10_pr_no_nrs WHERE finish_position=1 LIMIT 100;
+SELECT * FROM races_data LIMIT 100;
