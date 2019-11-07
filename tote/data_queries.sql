@@ -275,6 +275,7 @@ AND pr_10_did_not_finish =0
 ;
 
 
-SELECT COUNT(DISTINCT race_id) FROM training_data_10_pr_no_nrs LIMIT 100;
-SELECT COUNT(1) FROM training_data_10_pr_no_nrs WHERE finish_position=1 LIMIT 100;
-SELECT * FROM races_data LIMIT 100;
+SELECT DISTINCT race_id, SUBSTRING_INDEX(trifecta, ' ', 1)
+FROM horses_data
+LIMIT 1000;
+SELECT DISTINCT SUBSTRING_INDEX(tricast, ' ', 1) FROM horses_data LIMIT 1000;
