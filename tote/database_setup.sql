@@ -583,3 +583,15 @@ CREATE INDEX horse_id ON horses_data_combined_no_nrs_with_past_results(horse_id)
 CREATE INDEX race_id ON horses_data_combined_no_nrs_with_past_results(race_id);
 
 
+# Add jockeys into data
+CREATE TABLE horses_data_combined_no_nrs_with_past_results_add_jockeys_tmp AS
+SELECT hd.*, jd.jockey_id, jd.trainer_id, jd.owner_name
+FROM horses_data_combined_no_nrs_with_past_results hd
+LEFT JOIN (SELECT horse_id, race_id, race_date, jockey_id, trainer_id, owner_name FROM horses_data) jd
+ON hd.horse_id = jd.horse_id AND hd.race_id = jd.race_id AND hd.race_date = jd.race_date;
+
+DROP TABLE IF EXISTS horses_data_combined_no_nrs_with_past_results;
+CREATE TABLE horses_data_combined_no_nrs_with_past_results AS SELECT * FROM horses_data_combined_no_nrs_with_past_results_add_jockeys_tmp;
+DROP TABLE IF EXISTS horses_data_combined_no_nrs_with_past_results_add_jockeys_tmp;
+
+

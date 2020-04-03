@@ -24,6 +24,8 @@ horses_data = pd.read_sql('''
 
 data_to_inspect = horses_data.isnull().sum(axis=0)
 
+
+
 '''
 data manipulation
 '''
@@ -33,6 +35,45 @@ for t in horse_sexes:
 
 horses_data['horse_last_ran_days'][horses_data['horse_last_ran_days'].isnull()] = 0
 
+
+# add decimal odds
+def odds_parser(odds_string):
+    try:
+        odds_split = odds_string.split('/')
+        decimal_odds = (int(odds_split[0])+int(odds_split[1]))/int(odds_split[1])
+        return decimal_odds
+    except:
+        return 1
+
+for i in range(10):
+    horses_data['pr_'+str(i+1)+'_decimal_odds'] = [odds_parser(o) for o in horses_data['pr_'+str(i+1)+'_betting_odds']]
+
+odds_cols = ['pr_'+str(i+1)+'_decimal_odds' for i in range(10)]
+horses_data['average_past_odds'] = horses_data[odds_cols].apply(np.nanmean, axis=1)
+
+
+# calculate horse speed and expected time based on past results
+def horse_speed(race_length, race_time):
+    try:
+        return race_length/race_time
+    except:
+        return None
+
+for i in range(10):
+    horses_data['pr_'+str(i+1)+'_speed'] = [horse_speed(rl, rt) for rl, rt
+                in zip(horses_data['pr_'+str(i+1)+'_yards'], horses_data['pr_'+str(i+1)+'_horse_time'])]
+
+speeds_cols = ['pr_'+str(i+1)+'_speed' for i in range(10)]
+horses_data['average_past_speed'] = horses_data[speeds_cols].apply(np.nanmean, axis=1)
+horses_data['expected_time'] = horses_data['yards']/horses_data['average_past_speed']
+
+
+# add # past wins and past win %
+finish_position_cols = ['pr_'+str(i+1)+'_finish_position' for i in range(10)]
+horses_data['number_past_wins'] = (horses_data[finish_position_cols]==1).apply(np.nansum, axis=1)
+horses_data['percentage_past_wins'] = horses_data['number_past_wins']/horses_data[finish_position_cols].notnull().sum(axis=1)
+
+data_to_inspect = horses_data[:100]
 
 
 '''
@@ -113,10 +154,11 @@ features_y = ['horse_time']
 features_current_race = ['yards', 'runners', 'handicap_pounds', 'horse_age',
                          'horse_sex_g','horse_sex_m','horse_sex_f','horse_sex_c','horse_sex_h','horse_sex_r',
                          'horse_last_ran_days', 'going_grouped_horse_time_rc',
-                         'race_type_horse_time_rc', 'weather_horse_time_rc']
+                         'race_type_horse_time_rc', 'weather_horse_time_rc',
+                         'average_past_speed', 'expected_time', 'average_past_odds']
 features_pr = ['horse_time', 'finish_position_for_ordering', 'yards',
                'runners', 'handicap_pounds', 'going_grouped_horse_time_rc',
-               'race_type_horse_time_rc', 'weather_horse_time_rc']
+               'race_type_horse_time_rc', 'weather_horse_time_rc', 'decimal_odds', 'speed']
 
 pr10Mod, pr10Mod_var = model_training(train_data=train_data, feature_y=features_y,
                                       feature_cur=features_current_race,
@@ -262,13 +304,6 @@ def top_3_check(positions):
     return (1 in positions_list) & (2 in positions_list) & (3 in positions_list)
 def first_item(x):
     return list(x)[0]
-def odds_parser(odds_string):
-    try:
-        odds_split = odds_string.split('/')
-        decimal_odds = (int(odds_split[0])+int(odds_split[1]))/int(odds_split[1])
-        return decimal_odds
-    except:
-        return 1
 
 
 ## note: non-finishers (incl. non-runners) discluded from training data
@@ -289,6 +324,9 @@ races_data = train_data_with_time_preds_complete.groupby('race_id').aggregate(
                 'pred_time': list,
                 'pred_var': list,
                 'pred_prs': list,
+                'average_past_odds': list,
+                'number_past_wins': list,
+                'percentage_past_wins': list,
                 'finish_position_for_ordering': [list, top_3_check],
                 'handicap_pounds': list,
                 'horse_age': list,
@@ -302,7 +340,8 @@ races_data = train_data_with_time_preds_complete.groupby('race_id').aggregate(
 
 rename_columns = ['race_id','race_date','course','country','yards','going_grouped',
                   'race_type_devised','weather_grouped','horse_id_list','pred_time_list',
-                  'pred_var_list','pred_prs_list','finish_position_for_ordering_list',
+                  'pred_var_list','pred_prs_list','average_past_odds_list',
+                  'number_past_wins_list','percentage_past_wins_list','finish_position_for_ordering_list',
                   'top_3_check','handicap_pounds_list','horse_age_list','horse_sex_list',
                   'horse_last_ran_days_list','did_not_finish_list','runners_in_data','runners_given',
                   'decimal_odds_list']
@@ -310,44 +349,59 @@ races_data.columns = rename_columns
 
 races_data['num_runners_check'] = races_data['runners_in_data']>=races_data['runners_given']
 
-def create_win_place_train_and_pred_data(races_data, number_runners, train_or_pred='train',
-                                         pred_with_result=False, order_inputs=True,
-                                         rounding=5):
+def create_win_place_train_and_pred_data(races_data, number_runners_min, number_runners_max,
+                                         train_or_pred='train', pred_with_result=False,
+                                         order_inputs=True, rounding=5):
     '''
     data input is df with lists containing features for each horse (as created above)
     it is intended that a separate model is created for each number of runners
     '''
-    subset_data = races_data[races_data['runners_in_data']==number_runners]
+    subset_data = races_data[races_data['runners_in_data'].isin(range(number_runners_min, number_runners_max+1))]
     subset_data = subset_data[subset_data['top_3_check'] & subset_data['num_runners_check']]
     
     if order_inputs:
         horse_pred_time_orders = [np.argsort(l) for l in subset_data['pred_time_list']]
     else:
-        horse_pred_time_orders = [list(range(number_runners)) for l in subset_data['pred_time_list']]
+        horse_pred_time_orders = [list(range(len(l))) for l in subset_data['pred_time_list']]
+    
+    def order_and_add_defaults(to_be_ordered, orders, default, length, rounding):
+        if rounding==None:
+            ordered_list = list(np.array(to_be_ordered)[orders])
+        else:
+            ordered_list = list(np.around(np.array(to_be_ordered)[orders],rounding))
+        
+        defaults = [default]*(length - len(ordered_list))
+        return ordered_list + defaults
     
     # get arrays of items, in order if ordering inputs
-    pred_times_lists = np.around(np.array(list(subset_data['pred_time_list'])),rounding)
-    pred_times_lists_ordered = np.array([l[o] for l, o in zip(pred_times_lists, horse_pred_time_orders)])
+    pred_times_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999999, number_runners_max, rounding) for tbo, o in zip(subset_data['pred_time_list'], horse_pred_time_orders)])
+    pred_vars_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999999, number_runners_max, rounding) for tbo, o in zip(subset_data['pred_var_list'], horse_pred_time_orders)])
+    pred_prs_lists_ordered = np.array([order_and_add_defaults(tbo, o, 0, number_runners_max, rounding) for tbo, o in zip(subset_data['pred_prs_list'], horse_pred_time_orders)])
+    average_past_odds_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, 2) for tbo, o in zip(subset_data['average_past_odds_list'], horse_pred_time_orders)])
+    number_past_wins_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, 2) for tbo, o in zip(subset_data['number_past_wins_list'], horse_pred_time_orders)])
+    percentage_past_wins_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, 2) for tbo, o in zip(subset_data['percentage_past_wins_list'], horse_pred_time_orders)])
+    odds_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, 2) for tbo, o in zip(subset_data['decimal_odds_list'], horse_pred_time_orders)])
     
-    pred_vars_lists = np.around(np.array(list(subset_data['pred_var_list'])),rounding)
-    pred_vars_lists_ordered = np.array([l[o] for l, o in zip(pred_vars_lists, horse_pred_time_orders)])
+    pred_time_cols = ['cp_'+str(i)+'_pred_time' for i in range(number_runners_max)]
+    pred_var_cols = ['cp_'+str(i)+'_pred_var' for i in range(number_runners_max)]
+    pred_prs_cols = ['cp_'+str(i)+'_pred_prs' for i in range(number_runners_max)]
+    avg_odds_cols = ['cp_'+str(i)+'_average_past_odds' for i in range(number_runners_max)]
+    num_pwin_cols = ['cp_'+str(i)+'_number_past_wins' for i in range(number_runners_max)]
+    pct_pwin_cols = ['cp_'+str(i)+'_percentage_past_wins' for i in range(number_runners_max)]
+    odds_cols = ['cp_'+str(i)+'_odds' for i in range(number_runners_max)]
     
-    pred_prs_lists = np.around(np.array(list(subset_data['pred_prs_list'])),rounding)
-    pred_prs_lists_ordered = np.array([l[o] for l, o in zip(pred_prs_lists, horse_pred_time_orders)])
-    
-    pred_time_cols = ['cp_'+str(i)+'_pred_time' for i in range(number_runners)]
-    pred_var_cols = ['cp_'+str(i)+'_pred_var' for i in range(number_runners)]
-    pred_prs_cols = ['cp_'+str(i)+'_pred_prs' for i in range(number_runners)]
-    
-    features = pred_time_cols + pred_var_cols + pred_prs_cols
+    features = pred_time_cols + pred_var_cols + pred_prs_cols + avg_odds_cols + num_pwin_cols + pct_pwin_cols #+ odds_cols
     
     if train_or_pred.lower()=='train':
-        finish_position_lists = np.array(list(subset_data['finish_position_for_ordering_list']))
-        finish_position_lists_ordered = np.array([l[o] for l, o in zip(finish_position_lists, horse_pred_time_orders)])
+        finish_position_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, rounding) for tbo, o in zip(subset_data['finish_position_for_ordering_list'], horse_pred_time_orders)])
         df = subset_data[['race_id','yards']].reset_index(drop=True)
-        df[pred_time_cols] = pd.DataFrame(pred_times_lists_ordered,columns=pred_time_cols)
-        df[pred_var_cols] = pd.DataFrame(pred_vars_lists_ordered,columns=pred_var_cols)
-        df[pred_prs_cols] = pd.DataFrame(pred_prs_lists_ordered,columns=pred_prs_cols)
+        df[pred_time_cols] = pd.DataFrame(pred_times_lists_ordered, columns=pred_time_cols)
+        df[pred_var_cols] = pd.DataFrame(pred_vars_lists_ordered, columns=pred_var_cols)
+        df[pred_prs_cols] = pd.DataFrame(pred_prs_lists_ordered, columns=pred_prs_cols)
+        df[avg_odds_cols] = pd.DataFrame(average_past_odds_lists_ordered, columns=avg_odds_cols)
+        df[num_pwin_cols] = pd.DataFrame(number_past_wins_lists_ordered, columns=num_pwin_cols)
+        df[pct_pwin_cols] = pd.DataFrame(percentage_past_wins_lists_ordered, columns=pct_pwin_cols)
+        df[odds_cols] = pd.DataFrame(odds_lists_ordered, columns=odds_cols)
         df['winner'] = [list(x).index(1) for x in list(finish_position_lists_ordered)]
         df['second'] = [list(x).index(2) for x in list(finish_position_lists_ordered)]
         df['third'] = [list(x).index(3) for x in list(finish_position_lists_ordered)]
@@ -366,9 +420,13 @@ def create_win_place_train_and_pred_data(races_data, number_runners, train_or_pr
     else:
         original_index = subset_data.index
         df = subset_data.copy()
-        df[pred_time_cols] = pd.DataFrame(pred_times_lists_ordered,columns=pred_time_cols, index=original_index)
-        df[pred_var_cols] = pd.DataFrame(pred_vars_lists_ordered,columns=pred_var_cols, index=original_index)
-        df[pred_prs_cols] = pd.DataFrame(pred_prs_lists_ordered,columns=pred_prs_cols, index=original_index)
+        df[pred_time_cols] = pd.DataFrame(pred_times_lists_ordered, columns=pred_time_cols, index=original_index)
+        df[pred_var_cols] = pd.DataFrame(pred_vars_lists_ordered, columns=pred_var_cols, index=original_index)
+        df[pred_prs_cols] = pd.DataFrame(pred_prs_lists_ordered, columns=pred_prs_cols, index=original_index)
+        df[avg_odds_cols] = pd.DataFrame(average_past_odds_lists_ordered, columns=avg_odds_cols, index=original_index)
+        df[num_pwin_cols] = pd.DataFrame(number_past_wins_lists_ordered, columns=num_pwin_cols, index=original_index)
+        df[pct_pwin_cols] = pd.DataFrame(percentage_past_wins_lists_ordered, columns=pct_pwin_cols, index=original_index)
+        df[odds_cols] = pd.DataFrame(odds_lists_ordered, columns=odds_cols, index=original_index)
         if order_inputs:
             additional_columns_to_reorder = ['horse_id_list', 'pred_time_list', 'pred_var_list',
                                              'pred_prs_list','finish_position_for_ordering_list',
@@ -379,8 +437,7 @@ def create_win_place_train_and_pred_data(races_data, number_runners, train_or_pr
                 df[c] = [list(np.array(l)[o]) for l, o in zip(df[c], horse_pred_time_orders)]
             
         if pred_with_result:
-            finish_position_lists = np.array(list(subset_data['finish_position_for_ordering_list']))
-            finish_position_lists_ordered = np.array([l[o] for l, o in zip(finish_position_lists, horse_pred_time_orders)])
+            finish_position_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, number_runners_max, None) for tbo, o in zip(subset_data['finish_position_for_ordering_list'], horse_pred_time_orders)])
             df['winner'] = [list(x).index(1) for x in list(finish_position_lists_ordered)]
             df['second'] = [list(x).index(2) for x in list(finish_position_lists_ordered)]
             df['third'] = [list(x).index(3) for x in list(finish_position_lists_ordered)]
@@ -393,14 +450,15 @@ def create_win_place_train_and_pred_data(races_data, number_runners, train_or_pr
 
 
 
-def win_and_place_model_training(races_data, number_runners, order_training_inputs=True, rounding=0):
+def win_and_place_model_training(races_data, number_runners_min, number_runners_max, order_training_inputs=True, rounding=0):
     '''
     data input is df with lists containing features for each horse (as created above)
     it is intended that a separate model is created for each number of runners
     '''
     train_set, train_X, test_set, test_X = create_win_place_train_and_pred_data(
-            races_data=races_data, number_runners=number_runners,
-            order_inputs=order_training_inputs, rounding=rounding
+            races_data=races_data, number_runners_min=number_runners_min,
+            number_runners_max=number_runners_max, order_inputs=order_training_inputs,
+            rounding=rounding
             )
     
     # train win model
@@ -413,7 +471,7 @@ def win_and_place_model_training(races_data, number_runners, order_training_inpu
         'num_parallel_tree':30, # set to >1 for rf (remove for gbt)
         'objective':'multi:softprob',
         'eval_metric':'mlogloss',
-        'num_class':number_runners
+        'num_class':number_runners_max
     }
     num_boost_round = 1
     early_stopping = 1
@@ -442,12 +500,18 @@ def win_and_place_model_training(races_data, number_runners, order_training_inpu
     return [model_winner, model_second, model_third]
 
 
+
 # train models
-races_data['runners_in_data'].unique()
+races_data_train_win_place, races_data_train_trifecta = train_test_split(races_data, test_size=0.5, random_state=123)
+runners_in_data = races_data_train_win_place['runners_in_data'].unique()
+runners_in_data.sort()
+runners_in_data
 win_place_models_number_runners_list = list(range(3,25))
 win_place_models_dict = {}
-for r in win_place_models_number_runners_list:
-    win_place_models_dict[r] = win_and_place_model_training(races_data=races_data, number_runners=r)
+for r in win_place_models_number_runners_list[:-2]:
+    win_place_models_dict[r] = win_and_place_model_training(
+            races_data=races_data_train_win_place,
+            number_runners_min=r, number_runners_max=r+2)
 
 
 
@@ -456,16 +520,16 @@ for r in win_place_models_number_runners_list:
 '''
 predict places and train trifecta model
 '''
-def get_win_and_place_predictions(races_data, models_dict, order_prediction_inputs=True, rounding=0):
+def get_win_and_place_predictions(races_data, models_dict, order_prediction_inputs=True, rounding=0, padding=0):
     num_racers_list = list(models_dict.keys())
     
     output_data_columns = list(races_data.columns)+['pred_winner','pred_second','pred_third']
     output_df = pd.DataFrame(columns=output_data_columns)
     for n in num_racers_list:
         pred_data, pred_X = create_win_place_train_and_pred_data(
-                races_data=races_data, number_runners=n, train_or_pred='prediction',
-                pred_with_result=True, order_inputs=order_prediction_inputs,
-                rounding=rounding
+                races_data=races_data, number_runners_min=n, number_runners_max=n+padding,
+                train_or_pred='prediction', pred_with_result=True,
+                order_inputs=order_prediction_inputs, rounding=rounding
                 )
         win_mod, sec_mod, thi_mod = models_dict[n]
         win_preds = win_mod.predict(xgb.DMatrix(pred_X))
@@ -485,12 +549,15 @@ def get_win_and_place_predictions(races_data, models_dict, order_prediction_inpu
     return output_df
 
 
-races_data_with_predictions = get_win_and_place_predictions(
-        races_data=races_data, models_dict=win_place_models_dict,
-        order_prediction_inputs=True, rounding=0)
+races_data_train_win_place_with_preds = get_win_and_place_predictions(
+        races_data=races_data_train_win_place, models_dict=win_place_models_dict,
+        order_prediction_inputs=True, rounding=0, padding=2)
 
+races_data_train_trifecta_with_preds = get_win_and_place_predictions(
+        races_data=races_data_train_trifecta, models_dict=win_place_models_dict,
+        order_prediction_inputs=True, rounding=0, padding=2)
 
-
+data_to_inspect=races_data_train_trifecta_with_preds[:100]
 # get trifecta data
 connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
 sql_engine = sqlalchemy.create_engine(connect_string)
@@ -500,10 +567,14 @@ trifecta_payouts = pd.read_sql('''
                           ''',
                           con=sql_engine)
 
-races_data_with_predictions = races_data_with_predictions.merge(trifecta_payouts,
+#races_data_with_predictions = races_data_with_predictions.merge(trifecta_payouts,
+#                                                                how='left', on='race_id')
+
+
+races_data_train_trifecta_with_preds = races_data_train_trifecta_with_preds.merge(trifecta_payouts,
                                                                 how='left', on='race_id')
 
-trifecta_data = races_data_with_predictions[races_data_with_predictions['trifecta_payout'].notnull()]
+trifecta_data = races_data_train_trifecta_with_preds[races_data_train_trifecta_with_preds['trifecta_payout'].notnull()]
 
 def get_trifecta_horse_combos(horses_list):
     try:
@@ -517,7 +588,7 @@ def get_trifecta_horse_combos(horses_list):
     except:
         return []
 
-trifecta_data['trifecta_horse_combos'] = [get_trifecta_horse_combos(h) for h in trifecta_data['horse_id_list']]
+trifecta_data['trifecta_horse_combos'] = [get_trifecta_horse_combos(h) for h in tqdm(trifecta_data['horse_id_list'])]
 
 def get_trifecta_pred_prob(trifecta_selection, horse_list, win_probs, second_probs, third_probs):
     try:
@@ -534,12 +605,12 @@ def get_trifecta_pred_prob(trifecta_selection, horse_list, win_probs, second_pro
 def get_trifecta_pred_probs(trifecta_horse_combos, horse_list, win_probs, second_probs, third_probs):
     return [get_trifecta_pred_prob(ts, horse_list, win_probs, second_probs, third_probs) for ts in trifecta_horse_combos]
 
-trifecta_data['trifect_combo_probs'] = [get_trifecta_pred_probs(thc, hl, wp, sp, tp) for thc, hl, wp, sp, tp in zip(trifecta_data['trifecta_horse_combos'], trifecta_data['horse_id_list'], trifecta_data['pred_winner'], trifecta_data['pred_second'], trifecta_data['pred_third'])]
+trifecta_data['trifect_combo_probs'] = [get_trifecta_pred_probs(thc, hl, wp, sp, tp) for thc, hl, wp, sp, tp in tqdm(zip(trifecta_data['trifecta_horse_combos'], trifecta_data['horse_id_list'], trifecta_data['pred_winner'], trifecta_data['pred_second'], trifecta_data['pred_third']), total=len(trifecta_data))]
 
 def get_trifecta_winning_combo(horse_list, finish_positions):
     return (horse_list[finish_positions.index(1)], horse_list[finish_positions.index(2)], horse_list[finish_positions.index(3)])
 
-trifecta_data['winning_selection'] = [get_trifecta_winning_combo(hl, fp) for hl, fp in zip(trifecta_data['horse_id_list'], trifecta_data['finish_position_for_ordering_list'])]
+trifecta_data['winning_selection'] = [get_trifecta_winning_combo(hl, fp) for hl, fp in tqdm(zip(trifecta_data['horse_id_list'], trifecta_data['finish_position_for_ordering_list']), total=len(trifecta_data))]
 
 def get_trifecta_pred_features_for_selection(trifecta_selection, horse_list, win_probs, second_probs, third_probs, runners, winning_selection, trifecta_payout):
     try:
@@ -564,24 +635,26 @@ def get_trifecta_pred_features_for_selection(trifecta_selection, horse_list, win
 def get_trifecta_pred_features_for_all_selections(trifecta_selections, horse_list, win_probs, second_probs, third_probs, runners, winning_selection, trifecta_payout):
     return [get_trifecta_pred_features_for_selection(ts, horse_list, win_probs, second_probs, third_probs, runners, winning_selection, trifecta_payout) for ts in trifecta_selections]
 
-trifecta_pred_df = [get_trifecta_pred_features_for_all_selections(tss, hl, wp, sp, tp, r, ws, p) for tss, hl, wp, sp, tp, r, ws, p in zip(trifecta_data['trifecta_horse_combos'], trifecta_data['horse_id_list'], trifecta_data['pred_winner'], trifecta_data['pred_second'], trifecta_data['pred_third'], trifecta_data['runners_in_data'], trifecta_data['winning_selection'], trifecta_data['trifecta_payout'])]
+trifecta_pred_df = [get_trifecta_pred_features_for_all_selections(tss, hl, wp, sp, tp, r, ws, p) for tss, hl, wp, sp, tp, r, ws, p in tqdm(zip(trifecta_data['trifecta_horse_combos'], trifecta_data['horse_id_list'], trifecta_data['pred_winner'], trifecta_data['pred_second'], trifecta_data['pred_third'], trifecta_data['runners_in_data'], trifecta_data['winning_selection'], trifecta_data['trifecta_payout']), total=len(trifecta_data))]
 trifecta_pred_df = [item for sublist in trifecta_pred_df for item in sublist]
 trifecta_pred_df = [f for f in trifecta_pred_df if f!=[]]
 trifecta_pred_df = pd.DataFrame(trifecta_pred_df, columns=['winner_win', 'winner_2nd', 'winner_3rd', 'second_win', 'second_2nd', 'second_3rd', 'third_win', 'third_2nd', 'third_3rd', 'trifecta_prob', 'runners', 'payout'])
 trifecta_pred_df['payout'] = trifecta_pred_df['payout'].astype(float)
 sys.getsizeof(trifecta_pred_df)/(1024*1024*1024)
 
+# delete trifecta data to free up some space
+del(trifecta_data)
 
 # train trifecta model
-min_runners = 12
-max_runners = 12
+min_runners = 7
+max_runners = 7
 trifecta_pred_df_subset = trifecta_pred_df[(trifecta_pred_df['runners']>=min_runners) & (trifecta_pred_df['runners']<=max_runners)]
 len(trifecta_pred_df_subset)
 
 data_to_inspect = trifecta_pred_df_subset[:1000]
 
 # NOTE: WILL NEED TO ADD INFO LIKE RACE AND HORSE IDS TO DATA
-trifecta_train_data, trifecta_test_data = train_test_split(trifecta_pred_df_subset, test_size=0.5, random_state=123)
+trifecta_train_data, trifecta_test_data = train_test_split(trifecta_pred_df_subset, test_size=0.2, random_state=123)
 trifecta_features = trifecta_train_data.columns[:-1]
 trifecta_train_X = trifecta_train_data[trifecta_features]
 trifecta_train_y = trifecta_train_data['payout']
@@ -589,11 +662,12 @@ trifecta_test_X = trifecta_test_data[trifecta_features]
 trifecta_test_y = trifecta_test_data['payout']
 
 params = {
-    'max_depth':2,
-    'min_child_weight': 5,
-    'eta':0.1,
-    'col_sample_by_tree':0.5,
-    'subsample':0.5,
+    'max_depth':1,
+    'min_child_weight': 10,
+    'eta':0.11, # set to 1 for rf
+    'col_sample_by_tree':0.8, # set to < 1 for rf
+    'subsample':0.8, # set to < 1 for rf
+    #'num_parallel_tree':50, # set to >1 for rf (remove for gbt)
     'objective':'reg:squarederror',
     'eval_metric':'rmse',
 }
@@ -611,11 +685,25 @@ trifecta_train_preds = model_trifecta.predict(dtrain_trifecta)
 trifecta_test_preds = model_trifecta.predict(dtest_trifecta)
 
 trifecta_bet_cutoff = 1
-#sum(trifecta_train_preds>trifecta_bet_cutoff)
+sum(trifecta_train_preds>trifecta_bet_cutoff)
+sum(trifecta_train_y[trifecta_train_preds>trifecta_bet_cutoff])
 sum(trifecta_test_preds>trifecta_bet_cutoff)
-#sum(trifecta_train_y[trifecta_train_preds>trifecta_bet_cutoff])
 sum(trifecta_test_y[trifecta_test_preds>trifecta_bet_cutoff])
+data_to_inspect = trifecta_test_y[trifecta_test_preds>trifecta_bet_cutoff]
 
+
+import statsmodels.api as sm
+linMod = sm.OLS(trifecta_train_y, sm.add_constant(trifecta_train_X))
+linModFit = linMod.fit()
+linModFit.summary()
+linMod_train_preds = linModFit.predict(sm.add_constant(trifecta_train_X))
+linMod_test_preds = linModFit.predict(sm.add_constant(trifecta_test_X))
+
+trifecta_bet_cutoff = 1
+sum(linMod_train_preds>trifecta_bet_cutoff)
+sum(trifecta_train_y[linMod_train_preds>trifecta_bet_cutoff])
+sum(linMod_test_preds>trifecta_bet_cutoff)
+sum(trifecta_test_y[linMod_test_preds>trifecta_bet_cutoff])
 
 
 
@@ -629,10 +717,11 @@ features_y = ['horse_time']
 features_current_race = ['yards', 'runners', 'handicap_pounds', 'horse_age',
                          'horse_sex_g','horse_sex_m','horse_sex_f','horse_sex_c','horse_sex_h','horse_sex_r',
                          'horse_last_ran_days', 'going_grouped_horse_time_rc',
-                         'race_type_horse_time_rc', 'weather_horse_time_rc']
+                         'race_type_horse_time_rc', 'weather_horse_time_rc',
+                         'average_past_speed', 'expected_time', 'average_past_odds']
 features_pr = ['horse_time', 'finish_position_for_ordering', 'yards',
                'runners', 'handicap_pounds', 'going_grouped_horse_time_rc',
-               'race_type_horse_time_rc', 'weather_horse_time_rc']
+               'race_type_horse_time_rc', 'weather_horse_time_rc', 'decimal_odds', 'speed']
 
 # horse time preds
 test_data_with_time_preds = test_data.copy()
@@ -698,6 +787,9 @@ races_test_data = test_data_with_time_preds_complete.groupby('race_id').aggregat
                 'pred_time': list,
                 'pred_var': list,
                 'pred_prs': list,
+                'average_past_odds': list,
+                'number_past_wins': list,
+                'percentage_past_wins': list,
                 'finish_position_for_ordering': [list, top_3_check],
                 'handicap_pounds': list,
                 'horse_age': list,
@@ -711,7 +803,8 @@ races_test_data = test_data_with_time_preds_complete.groupby('race_id').aggregat
 
 rename_columns = ['race_id','race_date','course','country','yards','going_grouped',
                   'race_type_devised','weather_grouped','horse_id_list','pred_time_list',
-                  'pred_var_list','pred_prs_list','finish_position_for_ordering_list',
+                  'pred_var_list','pred_prs_list','average_past_odds_list',
+                  'number_past_wins_list','percentage_past_wins_list','finish_position_for_ordering_list',
                   'top_3_check','handicap_pounds_list','horse_age_list','horse_sex_list',
                   'horse_last_ran_days_list','did_not_finish_list','runners_in_data','runners_given',
                   'decimal_odds_list']
@@ -725,7 +818,7 @@ win_place_preds_number_runners_list = [n for n in win_place_preds_number_runners
 
 races_test_data_with_predictions = get_win_and_place_predictions(
         races_data=races_test_data, models_dict=win_place_models_dict,
-        order_prediction_inputs=True, rounding=0)
+        order_prediction_inputs=True, rounding=0, padding=2)
 
 
 
@@ -743,23 +836,26 @@ races_test_data_with_predictions = races_test_data_with_predictions.merge(trifec
 
 trifecta_test_data = races_test_data_with_predictions[races_test_data_with_predictions['trifecta_payout'].notnull()]
 
-trifecta_test_data['trifecta_horse_combos'] = [get_trifecta_horse_combos(h) for h in trifecta_test_data['horse_id_list']]
+trifecta_test_data['trifecta_horse_combos'] = [get_trifecta_horse_combos(h) for h in tqdm(trifecta_test_data['horse_id_list'])]
 
-trifecta_test_data['trifect_combo_probs'] = [get_trifecta_pred_probs(thc, hl, wp, sp, tp) for thc, hl, wp, sp, tp in zip(trifecta_test_data['trifecta_horse_combos'], trifecta_test_data['horse_id_list'], trifecta_test_data['pred_winner'], trifecta_test_data['pred_second'], trifecta_test_data['pred_third'])]
+trifecta_test_data['trifect_combo_probs'] = [get_trifecta_pred_probs(thc, hl, wp, sp, tp) for thc, hl, wp, sp, tp in tqdm(zip(trifecta_test_data['trifecta_horse_combos'], trifecta_test_data['horse_id_list'], trifecta_test_data['pred_winner'], trifecta_test_data['pred_second'], trifecta_test_data['pred_third']), total=len(trifecta_test_data))]
 
-trifecta_test_data['winning_selection'] = [get_trifecta_winning_combo(hl, fp) for hl, fp in zip(trifecta_test_data['horse_id_list'], trifecta_test_data['finish_position_for_ordering_list'])]
+trifecta_test_data['winning_selection'] = [get_trifecta_winning_combo(hl, fp) for hl, fp in tqdm(zip(trifecta_test_data['horse_id_list'], trifecta_test_data['finish_position_for_ordering_list']), total=len(trifecta_test_data))]
 
-trifecta_test_pred_df = [get_trifecta_pred_features_for_all_selections(tss, hl, wp, sp, tp, r, ws, p) for tss, hl, wp, sp, tp, r, ws, p in zip(trifecta_test_data['trifecta_horse_combos'], trifecta_test_data['horse_id_list'], trifecta_test_data['pred_winner'], trifecta_test_data['pred_second'], trifecta_test_data['pred_third'], trifecta_test_data['runners_in_data'], trifecta_test_data['winning_selection'], trifecta_test_data['trifecta_payout'])]
+trifecta_test_pred_df = [get_trifecta_pred_features_for_all_selections(tss, hl, wp, sp, tp, r, ws, p) for tss, hl, wp, sp, tp, r, ws, p in tqdm(zip(trifecta_test_data['trifecta_horse_combos'], trifecta_test_data['horse_id_list'], trifecta_test_data['pred_winner'], trifecta_test_data['pred_second'], trifecta_test_data['pred_third'], trifecta_test_data['runners_in_data'], trifecta_test_data['winning_selection'], trifecta_test_data['trifecta_payout']), total=len(trifecta_test_data))]
+# need to free up some memory
+del(horses_data)
+del(trifecta_test_data)
 trifecta_test_pred_df = [item for sublist in trifecta_test_pred_df for item in sublist]
 trifecta_test_pred_df = [f for f in trifecta_test_pred_df if f!=[]]
 trifecta_test_pred_df = pd.DataFrame(trifecta_test_pred_df, columns=['winner_win', 'winner_2nd', 'winner_3rd', 'second_win', 'second_2nd', 'second_3rd', 'third_win', 'third_2nd', 'third_3rd', 'trifecta_prob', 'runners', 'payout'])
 trifecta_test_pred_df['payout'] = trifecta_test_pred_df['payout'].astype(float)
 sys.getsizeof(trifecta_test_pred_df)/(1024*1024*1024)
 
+#6951 took ages
 
-
-min_runners = 12
-max_runners = 12
+min_runners = 7
+max_runners = 7
 trifecta_test_pred_df_subset = trifecta_test_pred_df[(trifecta_test_pred_df['runners']>=min_runners) & (trifecta_test_pred_df['runners']<=max_runners)]
 len(trifecta_test_pred_df_subset)
 
@@ -772,22 +868,35 @@ dtrifecta_test = xgb.DMatrix(trifecta_test_pred_X, label=trifecta_test_pred_y)
 
 trifecta_preds = model_trifecta.predict(dtrifecta_test)
 
-trifecta_bet_cutoff = 1.4
+trifecta_bet_cutoff = 1
 sum(trifecta_preds>trifecta_bet_cutoff)
 sum(trifecta_test_pred_y[trifecta_preds>trifecta_bet_cutoff])
 
-
-
-data_to_inspect = trifecta_test_data[:100]
-
-
-
-
-
+# lin mod
+trifecta_linmod_preds = linModFit.predict(sm.add_constant(trifecta_test_pred_X))
+trifecta_bet_cutoff = 1.2
+sum(trifecta_linmod_preds>trifecta_bet_cutoff)
+sum(trifecta_test_pred_y[trifecta_linmod_preds>trifecta_bet_cutoff])
 
 
 
 
+
+
+
+### test winner predictions with held out data
+data_to_inspect = races_test_data_with_predictions[:100]
+number_runners = 7
+horse_number = 0
+margin = 2
+races_test_data_with_predictions_subset = races_test_data_with_predictions[races_test_data_with_predictions['runners_in_data']==number_runners]
+horse_win_pred = [p[horse_number] for p in races_test_data_with_predictions_subset['pred_winner']]
+horse_win_pred_odds = 1/np.array(horse_win_pred)
+horse_odds = [o[horse_number] for o in races_test_data_with_predictions_subset['decimal_odds_list']]
+horses_bet_on = horse_odds > horse_win_pred_odds*margin
+horse_wins = [(f[horse_number]==1)*1 for f in races_test_data_with_predictions_subset['finish_position_for_ordering_list']]
+sum(horses_bet_on)
+sum(horses_bet_on*horse_odds*horse_wins)
 
 
 
@@ -806,50 +915,67 @@ data_to_inspect = trifecta_test_data[:100]
 testing models
 '''
 # rearrange data to predict whether each horse will win or not, for races with given number of runners
-select_runners = 5
+select_runners_min = 7
+select_runners_max = 9
 rounding = 0
-subset_data = races_data[races_data['runners_in_data']==select_runners]
+subset_data = races_data[races_data['runners_in_data'].isin(range(select_runners_min,select_runners_max+1))]
 subset_data = subset_data[subset_data['top_3_check'] & subset_data['num_runners_check']]
+if False:
+    min_prs = 5
+    max_prs_under_min = 1
+    subset_data = subset_data[[sum(np.array(l)<min_prs) <= max_prs_under_min for l in subset_data['pred_prs_list']]]
+len(subset_data)
 
 order_training_inputs = True
 if order_training_inputs:
     horse_pred_time_orders = [np.argsort(l) for l in subset_data['pred_time_list']]
 else:
-    horse_pred_time_orders = [list(range(select_runners)) for l in subset_data['pred_time_list']]
+    horse_pred_time_orders = [list(range(len(l))) for l in subset_data['pred_time_list']]
 
-pred_times_lists = np.around(np.array(list(subset_data['pred_time_list'])),rounding)
-pred_times_lists_ordered = np.array([l[o] for l, o in zip(pred_times_lists, horse_pred_time_orders)])
+def order_and_add_defaults(to_be_ordered, orders, default, length, rounding):
+    ordered_list = list(np.around(np.array(to_be_ordered)[orders],rounding))
+    defaults = [default]*(length - len(ordered_list))
+    return ordered_list + defaults
 
-pred_vars_lists = np.around(np.array(list(subset_data['pred_var_list'])),rounding)
-pred_vars_lists_ordered = np.array([l[o] for l, o in zip(pred_vars_lists, horse_pred_time_orders)])
+pred_times_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999999, select_runners_max, rounding) for tbo, o in zip(subset_data['pred_time_list'], horse_pred_time_orders)])
 
-pred_prs_lists = np.around(np.array(list(subset_data['pred_prs_list'])),rounding)
-pred_prs_lists_ordered = np.array([l[o] for l, o in zip(pred_prs_lists, horse_pred_time_orders)])
+pred_vars_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999999, select_runners_max, rounding) for tbo, o in zip(subset_data['pred_var_list'], horse_pred_time_orders)])
 
-finish_position_lists = np.array(list(subset_data['finish_position_for_ordering_list']))
-finish_position_lists_ordered = np.array([l[o] for l, o in zip(finish_position_lists, horse_pred_time_orders)])
+pred_prs_lists_ordered = np.array([order_and_add_defaults(tbo, o, 0, select_runners_max, rounding) for tbo, o in zip(subset_data['pred_prs_list'], horse_pred_time_orders)])
 
-horse_id_lists = np.array(list(subset_data['horse_id_list']))
-horse_id_lists_ordered = np.array([l[o] for l, o in zip(horse_id_lists, horse_pred_time_orders)])
+average_past_odds_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, select_runners_max, 2) for tbo, o in zip(subset_data['average_past_odds_list'], horse_pred_time_orders)])
 
-odds_lists = np.array(list(subset_data['decimal_odds_list']))
-odds_lists_ordered = np.array([l[o] for l, o in zip(odds_lists, horse_pred_time_orders)])
+number_past_wins_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, select_runners_max, 2) for tbo, o in zip(subset_data['number_past_wins_list'], horse_pred_time_orders)])
+
+percentage_past_wins_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, select_runners_max, 2) for tbo, o in zip(subset_data['percentage_past_wins_list'], horse_pred_time_orders)])
+
+finish_position_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, select_runners_max, rounding) for tbo, o in zip(subset_data['finish_position_for_ordering_list'], horse_pred_time_orders)])
+
+horse_id_lists_ordered = np.array([order_and_add_defaults(tbo, o, -1, select_runners_max, rounding) for tbo, o in zip(subset_data['horse_id_list'], horse_pred_time_orders)])
+
+odds_lists_ordered = np.array([order_and_add_defaults(tbo, o, 999, select_runners_max, 2) for tbo, o in zip(subset_data['decimal_odds_list'], horse_pred_time_orders)])
 
 
 
 # multi-class model
 col_names = ['race_id','yards']
-pred_time_cols = ['cp_'+str(i)+'_pred_time' for i in range(0,select_runners)]
-pred_var_cols = ['cp_'+str(i)+'_pred_var' for i in range(0,select_runners)]
-pred_prs_cols = ['cp_'+str(i)+'_pred_prs' for i in range(0,select_runners)]
-fin_pos_cols = ['cp_'+str(i)+'_finish_position' for i in range(0,select_runners)]
-horse_id_cols = ['cp_'+str(i)+'_horse_id' for i in range(0,select_runners)]
-odds_cols = ['cp_'+str(i)+'_odds' for i in range(0,select_runners)]
+pred_time_cols = ['cp_'+str(i)+'_pred_time' for i in range(0,select_runners_max)]
+pred_var_cols = ['cp_'+str(i)+'_pred_var' for i in range(0,select_runners_max)]
+pred_prs_cols = ['cp_'+str(i)+'_pred_prs' for i in range(0,select_runners_max)]
+avg_odds_cols = ['cp_'+str(i)+'_average_past_odds' for i in range(0,select_runners_max)]
+num_pwin_cols = ['cp_'+str(i)+'_number_past_wins' for i in range(0,select_runners_max)]
+pct_pwin_cols = ['cp_'+str(i)+'_percentage_past_wins' for i in range(0,select_runners_max)]
+fin_pos_cols = ['cp_'+str(i)+'_finish_position' for i in range(0,select_runners_max)]
+horse_id_cols = ['cp_'+str(i)+'_horse_id' for i in range(0,select_runners_max)]
+odds_cols = ['cp_'+str(i)+'_odds' for i in range(0,select_runners_max)]
 
-df = subset_data[['race_id','yards']].reset_index(drop=True)
+df = subset_data[['race_id','yards','runners_in_data']].reset_index(drop=True)
 df[pred_time_cols] = pd.DataFrame(pred_times_lists_ordered,columns=pred_time_cols)
 df[pred_var_cols] = pd.DataFrame(pred_vars_lists_ordered,columns=pred_var_cols)
 df[pred_prs_cols] = pd.DataFrame(pred_prs_lists_ordered,columns=pred_prs_cols)
+df[avg_odds_cols] = pd.DataFrame(average_past_odds_lists_ordered,columns=avg_odds_cols)
+df[num_pwin_cols] = pd.DataFrame(number_past_wins_lists_ordered ,columns=num_pwin_cols)
+df[pct_pwin_cols] = pd.DataFrame(percentage_past_wins_lists_ordered ,columns=pct_pwin_cols)
 df[fin_pos_cols] = pd.DataFrame(finish_position_lists_ordered,columns=fin_pos_cols)
 df[horse_id_cols] = pd.DataFrame(horse_id_lists_ordered,columns=horse_id_cols)
 df[odds_cols] = pd.DataFrame(odds_lists_ordered,columns=odds_cols)
@@ -858,12 +984,12 @@ df['second'] = [list(x).index(2) for x in list(finish_position_lists_ordered)]
 df['third'] = [list(x).index(3) for x in list(finish_position_lists_ordered)]
 
 feature_y = ['winner']
-features_x = pred_time_cols + pred_var_cols + pred_prs_cols
+features_x =  pred_time_cols + pred_var_cols + avg_odds_cols + pct_pwin_cols + num_pwin_cols + pred_prs_cols #+ odds_cols
 features = feature_y + features_x
-features_extra_info = ['race_id', 'yards'] + fin_pos_cols + horse_id_cols + odds_cols
+features_extra_info = ['race_id', 'yards', 'runners_in_data'] + fin_pos_cols + horse_id_cols + odds_cols
 train_data_winner = df[df[features].isnull().sum(axis=1)==0]
 race_ids = train_data_winner['race_id'].unique()
-train_races, test_races = train_test_split(race_ids, test_size=0.2, random_state=123)
+train_races, test_races = train_test_split(race_ids, test_size=0.2, random_state=12)
 train_set = train_data_winner[train_data_winner['race_id'].isin(train_races)]
 test_set = train_data_winner[train_data_winner['race_id'].isin(test_races)]
 train_X = train_set[features_x]
@@ -882,9 +1008,9 @@ params = {
     'col_sample_by_tree':0.5, # set to < 1 for rf
     'subsample':0.5, # set to < 1 for rf
     'num_parallel_tree':30, # set to >1 for rf (remove for gbt)
-    'objective':'multi:softmax',
+    'objective':'multi:softprob',
     'eval_metric':'mlogloss',
-    'num_class':select_runners
+    'num_class':select_runners_max
 }
 num_boost_round = 1 # set to 1 for rf
 early_stopping = 1
@@ -899,17 +1025,61 @@ model_winner = xgb.train(params, dtrain, num_boost_round=num_boost_round,
 preds_train = model_winner.predict(dtrain)
 preds_test = model_winner.predict(dtest)
 
-pred_win_cols = ['cp_'+str(i)+'_pred_win' for i in range(select_runners)]
-train_set[pred_win_cols] = pd.DataFrame(preds_train, columns=pred_win_cols, index=train_set.index)
-test_set[pred_win_cols] = pd.DataFrame(preds_test, columns=pred_win_cols, index=test_set.index)
 
-sum(preds_train == np.array(train_y).flatten())/len(preds_train)
-sum(preds_test == np.array(test_y).flatten())/len(preds_test)
+## softmax analysis
+#sum(preds_train == np.array(train_y).flatten())/len(preds_train)
+#sum(preds_test == np.array(test_y).flatten())/len(preds_test)
+#max(preds_test)
+#
+#test_set_num_runners_min = 7
+#test_set_num_runners_max = 7
+#train_idx = train_extra_info['runners_in_data'].isin(range(test_set_num_runners_min, test_set_num_runners_max+1))
+#test_idx = test_extra_info['runners_in_data'].isin(range(test_set_num_runners_min, test_set_num_runners_max+1))
+#sum(preds_train[train_idx] == np.array(train_y[train_idx]).flatten())/len(preds_train[train_idx])
+#sum(preds_test[test_idx] == np.array(test_y[test_idx]).flatten())/len(preds_test[test_idx])
+#sum(0 == np.array(test_y[test_idx]).flatten())/len(preds_test[test_idx])
+#
+#feature_importances_dict = model_winner.get_score(importance_type='gain')
+#feature_importances_df = pd.DataFrame({'feature':list(feature_importances_dict.keys()),
+#                                       'importance':list(feature_importances_dict.values())})
+#feature_importances_df = feature_importances_df.sort_values(by='importance', ascending=False)
+#feature_importances_df['importance'] = feature_importances_df['importance']/sum(feature_importances_df['importance'])
+#
+#
+#min_prs_cutoff = 3
+#
+#sum(preds_test[(test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0] == np.array(test_y).flatten()[(test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0])
+#sum((test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0)
+#
+#
+## test betting on predicted winner
+#subset_test_data = subset_data[subset_data['race_id'].isin(test_races)]
+#subset_test_data['winner_idx'] = [fpl.index(1) for fpl in subset_test_data['finish_position_for_ordering_list']]
+#subset_test_data['winner_odds'] = [dol[w] for dol, w in zip(subset_test_data['decimal_odds_list'], subset_test_data['winner_idx'])]
+#subset_test_data['win_preds'] = (preds_test == np.array(test_y).flatten())
+#sum(subset_test_data['winner_odds']*subset_test_data['win_preds'])/len(subset_test_data)
+#
+#data_to_inspect = subset_data[:100]
 
-min_prs_cutoff = 3
 
-sum(preds_test[(test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0] == np.array(test_y).flatten()[(test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0])
-sum((test_X[pred_prs_cols]<min_prs_cutoff).sum(axis=1)==0)
+
+# softprob analysis
+preds_test_df = pd.DataFrame(preds_test, index=test_X.index)
+preds_test_df = 1/preds_test_df
+
+horse_no = 1
+margin = 1
+bets_placed_on = test_extra_info['cp_'+str(horse_no)+'_odds']>(preds_test_df.iloc[:,horse_no])*margin
+winning_odds = test_extra_info['cp_'+str(horse_no)+'_odds']*(np.array(test_y).flatten()==horse_no)
+sum(bets_placed_on)
+sum(bets_placed_on*winning_odds)
+
+sum(np.array(test_y).flatten()==0)
+
+
+
+
+
 
 
 # do some param testing
