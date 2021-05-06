@@ -14,14 +14,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import cross_validate
 import statsmodels.api as sm
 import itertools
-import pickle
 
 
 
 '''
 get data
 '''
-# horse data first
 connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
 sql_engine = sqlalchemy.create_engine(connect_string)
 horses_data = pd.read_sql('''
@@ -57,6 +55,38 @@ sys.getsizeof(horses_data)/(1024*1024*1024)
 '''
 data manipulation
 '''
+horses_data.columns[-60:]
+ft_pr_details = ['horse_time', 'course',
+       'surface', 'going', 'yards', 'runners',
+       'prize1', 'number_of_placed_rides', 'handicap_pounds',
+       'horse_age', 'horse_sex', 'horse_last_ran_days',
+       'horse_form', 'country', 'weather', 'race_class',
+       'going_main', 'going_grouped', 'race_type',
+       'race_type_devised']
+
+#features_to_copy = ['pr_'+str(1)+'_'+c for c in ft_pr_details]
+#features_to_impute = ['pr_'+str(2)+'_'+c for c in ft_pr_details]
+#horses_data.loc[:,features_to_impute][horses_data['pr_2_horse_time'].isnull()] = horses_data.loc[:,features_to_copy][horses_data['pr_2_horse_time'].isnull()].values
+#horses_data.loc[:,features_to_impute] = np.where(horses_data['pr_2_horse_time'].isnull()[:,None], horses_data.loc[:,features_to_copy], horses_data.loc[:,features_to_impute])
+for i in list(range(5,11)):
+    features_to_copy = ['pr_'+str(i-1)+'_'+c for c in ft_pr_details]
+    features_to_impute = ['pr_'+str(i)+'_'+c for c in ft_pr_details]
+    column_to_check = 'pr_'+str(i)+'_horse_time'
+    horses_data.loc[:,features_to_impute] = np.where(horses_data[column_to_check].isnull()[:,None], horses_data.loc[:,features_to_copy], horses_data.loc[:,features_to_impute])
+
+
+## one hot encoding - omit for now as response coding works well with boosted trees
+#horses_data = horses_data.merge(pd.get_dummies(horses_data['going_grouped']), left_index=True, right_index=True)
+#horses_data = horses_data.merge(pd.get_dummies(horses_data['race_type']), left_index=True, right_index=True)
+#
+#going_grouped_types = ['heavy','soft','good','standard','fast','firm','sloppy','slow','yielding']
+#for t in going_grouped_types:
+#    horses_data[t] = (horses_data['going_grouped']==t)*1
+#
+#past_results_to_get_dummies = 5
+#for i in range(past_results_to_get_dummies):
+#    for t in going_grouped_types:
+#        horses_data['pr_'+str(i+1)+'_'+t] = (horses_data['pr_'+str(i+1)+'_going_grouped']==t)*1
 horse_sexes = ['g','m','f','c','h','r']
 for t in horse_sexes:
     horses_data['horse_sex_'+t] = (horses_data['horse_sex']==t)*1
@@ -158,127 +188,6 @@ list(horses_data.columns)
 
 
 '''
-jockey data to add on
-'''
-connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
-sql_engine = sqlalchemy.create_engine(connect_string)
-jockeys_data = pd.read_sql('''
-                          SELECT    horse_id, race_id,
-                                    pr_1_finish_position_for_ordering,
-                                    pr_2_finish_position_for_ordering,
-                                    pr_3_finish_position_for_ordering,
-                                    pr_4_finish_position_for_ordering,
-                                    pr_5_finish_position_for_ordering,
-                                    pr_6_finish_position_for_ordering,
-                                    pr_7_finish_position_for_ordering,
-                                    pr_8_finish_position_for_ordering,
-                                    pr_9_finish_position_for_ordering,
-                                    pr_10_finish_position_for_ordering,
-                                    pr_1_runners,
-                                    pr_2_runners,
-                                    pr_3_runners,
-                                    pr_4_runners,
-                                    pr_5_runners,
-                                    pr_6_runners,
-                                    pr_7_runners,
-                                    pr_8_runners,
-                                    pr_9_runners,
-                                    pr_10_runners
-                          FROM jockeys_data_combined_no_nrs_with_past_results
-                            WHERE 1
-                          ''',
-                          con=sql_engine)
-
-## add win percentage
-past_places_cols = ['pr_'+str(i+1)+'_finish_position_for_ordering' for i in range(10)]
-jockeys_data['jockey_past_win_pc'] = (
-        (jockeys_data.loc[:, past_places_cols]==1).sum(axis=1)
-        / (jockeys_data.loc[:, past_places_cols]).notnull().sum(axis=1)
-)
-
-## add average finish position ratio
-runners_cols = ['pr_'+str(i+1)+'_runners' for i in range(10)]
-jockeys_data['jockey_past_avg_fp_ratio'] = (
-        pd.DataFrame(np.array(jockeys_data.loc[:, past_places_cols])
-                     / np.array(jockeys_data.loc[:, runners_cols])).apply(np.nanmean, axis=1)
-)
-
-# add features to horses data
-horses_data = horses_data.merge(jockeys_data[['horse_id', 'race_id', 'jockey_past_win_pc', 'jockey_past_avg_fp_ratio']],
-                                how='left', on=['horse_id', 'race_id'])
-
-len(horses_data)
-
-
-
-'''
-get best comparison pr using race similarity model
-'''
-with open('tote/models/race_similarity_20200412.pickle', 'rb') as f:
-    xgbMod_rs = pickle.load(f)
-
-features_current_race_rs = [
-    'yards', 'runners', 'handicap_pounds', 'horse_age', 'race_class', 'prize1',
-    'going_numerical', 'race_type_numerical', 'weather_numerical']
-features_pr_rs = [
-    'pr_speed', 'pr_horse_time', 'pr_implied_time', 'pr_yards', 'pr_runners', 'pr_handicap_pounds', 'pr_horse_age',
-    'pr_race_class', 'pr_prize1', 'pr_going_numerical', 'pr_race_type_numerical', 'pr_weather_numerical']
-
-for i in tqdm(range(6)):
-    features_pr_rs_i = [f.replace('pr_', 'pr_'+str(i+1)+'_') for f in features_pr_rs]
-    horses_data_subset = horses_data[features_current_race_rs + features_pr_rs_i]
-    horses_data_subset.columns = features_current_race_rs + features_pr_rs
-    horses_data_subset['pr_number'] = i+1
-
-    # Not done imputation, instead set races will null yards to pr number (so will take more recent pr as most similar
-
-    horses_data_subset['yards_ratio'] = horses_data_subset['yards'] / horses_data_subset['pr_yards']
-    horses_data_subset['runners_ratio'] = horses_data_subset['runners'] / horses_data_subset['pr_runners']
-    horses_data_subset['handicap_diff'] = horses_data_subset['handicap_pounds'] - horses_data_subset[
-        'pr_handicap_pounds']
-    horses_data_subset['same_course'] = (horses_data['course'] == horses_data['pr_'+str(i+1)+'_course']) * 1
-
-    features_x = [
-        'yards', 'runners', 'handicap_pounds', 'horse_age', 'race_class', 'prize1',
-        'going_numerical', 'race_type_numerical', 'weather_numerical',
-        'pr_speed', 'pr_horse_time', 'pr_implied_time', 'pr_yards',
-        'pr_runners', 'pr_handicap_pounds', 'pr_horse_age', 'pr_race_class', 'pr_prize1',
-        'pr_going_numerical', 'pr_race_type_numerical', 'pr_weather_numerical', 'pr_number',
-        'yards_ratio', 'runners_ratio', 'handicap_diff', 'same_course']
-    dpred = xgb.DMatrix(horses_data_subset[features_x])
-
-    race_similarities = xgbMod_rs.predict(dpred)
-
-    horses_data['pr_'+str(i+1)+'_race_similarity'] = race_similarities
-
-    horses_data.loc[horses_data['pr_'+str(i+1)+'_yards'].isnull(), 'pr_'+str(i+1)+'_race_similarity'] = i+1
-
-pr_rs1_columns = [f.replace('pr_1_', 'pr_rs1_') for f in horses_data.columns if 'pr_1_' in f]
-pr_rs2_columns = [f.replace('pr_1_', 'pr_rs2_') for f in horses_data.columns if 'pr_1_' in f]
-pr_rs3_columns = [f.replace('pr_1_', 'pr_rs3_') for f in horses_data.columns if 'pr_1_' in f]
-
-for f in tqdm(range(len(pr_rs1_columns))):
-    horses_data[pr_rs1_columns[f]] = None
-    horses_data[pr_rs2_columns[f]] = None
-    horses_data[pr_rs3_columns[f]] = None
-
-rs_columns = ['pr_'+str(i+1)+'_race_similarity' for i in range(6)]
-horses_data['pr_rs1'] = horses_data[rs_columns].apply(np.argmin, axis=1, raw=True) + 1
-horses_data['pr_rs2'] = horses_data[rs_columns].apply(lambda x: np.argsort(x)[1], axis=1, raw=True) + 1
-horses_data['pr_rs3'] = horses_data[rs_columns].apply(lambda x: np.argsort(x)[2], axis=1, raw=True) + 1
-
-for i in tqdm(range(6)):
-    pr_cols_to_copy = [f for f in horses_data.columns if 'pr_'+str(i+1)+'_' in f]
-    for f in range(len(pr_rs1_columns)):
-        horses_data.loc[horses_data['pr_rs1'] == i + 1, pr_rs1_columns[f]] = horses_data.loc[
-            horses_data['pr_rs1'] == i + 1, pr_cols_to_copy[f]]
-        horses_data.loc[horses_data['pr_rs2'] == i + 1, pr_rs2_columns[f]] = horses_data.loc[
-            horses_data['pr_rs2'] == i + 1, pr_cols_to_copy[f]]
-        horses_data.loc[horses_data['pr_rs3'] == i + 1, pr_rs3_columns[f]] = horses_data.loc[
-            horses_data['pr_rs3'] == i + 1, pr_cols_to_copy[f]]
-
-
-'''
 horse-race pairings
 '''
 
@@ -294,6 +203,9 @@ for i in tqdm(range(len(race_horse_lists))):
 
 race_horse_pairs = pd.DataFrame(race_horse_pairs, columns=['race_id', 'horse_1', 'horse_2'])
 
+data_to_inspect = race_horse_pairs.iloc[:1000, :]
+
+
 
 '''
 get features and subset data
@@ -302,15 +214,15 @@ get features and subset data
 # select features
 features_extra_info_for_results = ['race_id', 'horse_id', 'race_date', 'betting_odds',
                                    'finish_position', 'did_not_finish', #'jockey_id',
-                                   'payout', 'winner', 'horse_time', 'decimal_odds']
+                                   'payout', 'winner', 'horse_time']
 features_current_race = ['yards', 'runners', 'handicap_pounds', 'horse_age', 'race_class', 'prize1',
-                         'past_win_pc', 'past_avg_fp_ratio', 'jockey_past_win_pc', 'jockey_past_avg_fp_ratio',
+                         'past_win_pc', 'past_avg_fp_ratio',
                          'horse_sex_g','horse_sex_m','horse_sex_f','horse_sex_c','horse_sex_h','horse_sex_r',
                          'horse_last_ran_days',
                          #'going_grouped_horse_time_rc', 'race_type_horse_time_rc', 'weather_horse_time_rc',
                          'going_numerical', 'race_type_numerical', 'weather_numerical',
-                         'average_past_speed', #'expected_time',
-                         #'decimal_odds',
+                         'average_past_speed', 'expected_time',
+                         'decimal_odds',
                          #'course', 'race_type_devised' # for response coding
                          ]# + going_grouped_types
 features_pr = ['implied_time', 'relative_yards', 'speed', 'horse_time', 'finish_position_for_ordering', #'yards',
@@ -320,39 +232,28 @@ features_pr = ['implied_time', 'relative_yards', 'speed', 'horse_time', 'finish_
                #'relative_going', 'relative_race_type', 'relative_weather',
                'race_class', 'prize1',
                #'going_grouped_horse_time_rc', 'race_type_horse_time_rc', 'weather_horse_time_rc',
-               'decimal_odds', 'race_similarity'
+               'decimal_odds',
                #'course', 'race_type_devised' # for response coding
                ]# + going_grouped_types
-
 number_past_results = 3
-use_rs_prs = False
 features_prs = []
 for i in range(1, number_past_results+1):
-    if use_rs_prs:
-        features_prs = features_prs + ['pr_rs' + str(i) + '_' + pr for pr in features_pr]
-    else:
-        features_prs = features_prs + ['pr_'+str(i)+'_'+pr for pr in features_pr]
+    features_prs = features_prs + ['pr_'+str(i)+'_'+pr for pr in features_pr]
 
 features = features_extra_info_for_results + features_current_race + features_prs
 
 train_data = horses_data[features]
 
-train_data.columns[train_data.isnull().sum(axis=0)>0]
+data_to_inspect = train_data.isnull().sum(axis=0)
 train_data = train_data[train_data['yards'].notnull()]
-train_data = train_data[train_data['pr_rs3_relative_yards'].notnull()]
-train_data = train_data[train_data['jockey_past_win_pc'].notnull()]
-train_data = train_data[train_data['jockey_past_avg_fp_ratio'].notnull()]
-train_data = train_data[train_data['horse_last_ran_days'].notnull()]
-train_data = train_data[train_data['average_past_speed'].notnull()]
-
 train_data = train_data[train_data['horse_last_ran_days'].notnull()]
 train_data = train_data[train_data['average_past_speed'].notnull()]
 train_data = train_data[train_data['pr_1_relative_yards'].notnull()]
 train_data = train_data[train_data['pr_2_relative_yards'].notnull()]
 train_data = train_data[train_data['pr_3_relative_yards'].notnull()]
-# train_data = train_data[train_data['pr_4_relative_yards'].notnull()]
-# train_data = train_data[train_data['pr_5_relative_yards'].notnull()]
-# train_data = train_data[train_data['pr_6_relative_yards'].notnull()]
+train_data = train_data[train_data['pr_4_relative_yards'].notnull()]
+train_data = train_data[train_data['pr_5_relative_yards'].notnull()]
+train_data = train_data[train_data['pr_6_relative_yards'].notnull()]
 # train_data = train_data[train_data['pr_7_relative_yards'].notnull()]
 # train_data = train_data[train_data['pr_8_relative_yards'].notnull()]
 # train_data = train_data[train_data['pr_9_relative_yards'].notnull()]
@@ -396,16 +297,6 @@ test_y = race_horse_pairs_train_data.loc[test_mask, features_y]
 # train_extra_info = train_data.loc[train_idx, features[1:num_non_pred_features]]
 # test_extra_info = train_data.loc[test_idx, features[1:num_non_pred_features]]
 
-# convert dtypes if need be
-current_dtypes = train_X.dtypes
-for i in tqdm(range(len(current_dtypes))):
-    if current_dtypes[i] == 'object':
-        train_X[current_dtypes.index[i]] = train_X[current_dtypes.index[i]].astype(float)
-
-current_dtypes = test_X.dtypes
-for i in tqdm(range(len(current_dtypes))):
-    if current_dtypes[i] == 'object':
-        test_X[current_dtypes.index[i]] = test_X[current_dtypes.index[i]].astype(float)
 
 '''
 train models
@@ -422,20 +313,18 @@ train models
 # linModFit.summary()
 
 
-
-
 # xgb mod
 params = {
-    'max_depth':3,
-    'min_child_weight': 20,
+    'max_depth':2,
+    'min_child_weight': 50,
     'eta':.2,
 #    'subsample': 1,
 #    'colsample_bytree': 1,
     'objective': 'binary:logistic',  # 'reg:linear',  #
     'eval_metric': 'auc'  # 'rmse',  #
 }
-num_boost_round = 100
-early_stopping = 50
+num_boost_round = 5
+early_stopping = 10
 
 dtrain = xgb.DMatrix(train_X, label=train_y)
 dtest = xgb.DMatrix(test_X, label=test_y)
@@ -446,8 +335,8 @@ xgbMod = xgb.train(params,
                    evals=[(dtest, "Test")]
                    )
 
-xgbModPreds_train = xgbMod.predict(dtrain, ntree_limit=xgbMod.best_ntree_limit)
-xgbModPreds_test = xgbMod.predict(dtest, ntree_limit=xgbMod.best_ntree_limit)
+xgbModPreds_train = xgbMod.predict(dtrain)
+xgbModPreds_test = xgbMod.predict(dtest)
 
 # % right
 (sum((xgbModPreds_train > 0.5) & (train_y['y'] == 1)) + sum((xgbModPreds_train <= 0.5) & (train_y['y'] == 0)))/len(train_y)
@@ -527,9 +416,6 @@ sum(((race_horse_probs_with_all_runners_test['min_prob'] > prob_win_cutoff) &
      (race_horse_probs_with_all_runners_test['finish_position'] == 1))*race_horse_probs_with_all_runners_test['decimal_odds'])/sum(
     race_horse_probs_with_all_runners_test['min_prob'] > prob_win_cutoff)
 
-# random win %
-1 / (sum(race_horse_probs_with_all_runners['number_runners']/race_horse_probs_with_all_runners['horses_in_data']) /
-     sum(1/race_horse_probs_with_all_runners['horses_in_data']))
 # random return
 sum((race_horse_probs_with_all_runners_test['finish_position'] == 1)*race_horse_probs_with_all_runners_test['decimal_odds'])/len(
     race_horse_probs_with_all_runners_test)
@@ -571,7 +457,7 @@ race_horse_probs_with_all_runners_test['my_odds'] = (1 / race_horse_probs_with_a
 race_horse_probs_with_all_runners['bookies_prob'] = (1 / race_horse_probs_with_all_runners['decimal_odds'])
 race_horse_probs_with_all_runners_test['bookies_prob'] = (1 / race_horse_probs_with_all_runners_test['decimal_odds'])
 
-margin = 0.4
+margin = 0.2
 sum(((race_horse_probs_with_all_runners['bookies_prob'] + margin) < race_horse_probs_with_all_runners['scaled_prob']) *
     (race_horse_probs_with_all_runners['finish_position'] == 1) *
     race_horse_probs_with_all_runners['decimal_odds']) / sum(
@@ -587,29 +473,6 @@ sum(((race_horse_probs_with_all_runners_test['bookies_prob'] + margin) < race_ho
     (race_horse_probs_with_all_runners_test['finish_position'] == 1)) / sum(
     ((race_horse_probs_with_all_runners_test['bookies_prob'] + margin) < race_horse_probs_with_all_runners_test['scaled_prob']))
 
-
-
-feature_importances_dict = xgbMod.get_score(importance_type='gain')
-feature_importances_df = pd.DataFrame({'feature':list(feature_importances_dict.keys()),
-                                       'importance':list(feature_importances_dict.values())})
-feature_importances_df = feature_importances_df.sort_values(by='importance', ascending=False)
-feature_importances_df['importance'] = feature_importances_df['importance']/sum(feature_importances_df['importance'])
-
-feature_importances_df
-feature_importances_df[feature_importances_df['feature'] == 'jockey_past_win_pc_2']
-feature_importances_df[feature_importances_df['feature'] == 'jockey_past_avg_fp_ratio_2']
-
-list(feature_importances_df['feature'])
-list(feature_importances_df['importance'])
-
 # third place bets?
 # use bookies odds in model?
 # model to predict winnings (can work out which horses are underrated more)?
-
-
-'''
-predict winnings
-'''
-
-
-

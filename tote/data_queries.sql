@@ -1,7 +1,7 @@
 USE horses;
 
 SHOW FULL PROCESSLIST;
-KILL 13;
+KILL 47;
 
 # get basic data for initial analysis
 SELECT AVG(ratio), STD(ratio)
@@ -285,7 +285,6 @@ SELECT DISTINCT SUBSTRING_INDEX(tricast, ' ', 1) FROM horses_data LIMIT 1000;
 SELECT * FROM training_data_10_pr_no_nrs LIMIT 10;
 
 # Add 'relative' pr variables, e.g. current race yards divided by past race yards, or indicator if going and weather is similar
-SELECT * FROM horses_data_combined_no_nrs_with_past_results LIMIT 10;
 DROP TABLE training_data_6_relative_pr_no_nrs;
 CREATE TABLE training_data_6_relative_pr_no_nrs AS
 SELECT h.*, weather_horse_time_rc, going_grouped_horse_time_rc, race_type_horse_time_rc,
@@ -467,9 +466,204 @@ AND LOWER(country) IN ('scotland', 'england', 'northern ireland', 'eire', 'wales
 #LIMIT 100
 ;
 
+SELECT COUNT(1) FROM training_data_6_relative_pr_no_nrs;
 
-SELECT * FROM training_data_6_relative_pr_no_nrs WHERE race_class = 1 ORDER BY race_date DESC LIMIT 100;
+# Add 'relative' pr variables, e.g. current race yards divided by past race yards, or indicator if going and weather is similar
+DROP TABLE training_data_6_relative_pr;
+CREATE TABLE training_data_6_relative_pr AS
+SELECT h.*, weather_horse_time_rc, going_grouped_horse_time_rc, race_type_horse_time_rc,
+		ROUND(yards*1.0/pr_1_yards, 3) AS pr_1_relative_yards,
+        ROUND(yards*1.0/pr_2_yards, 3) AS pr_2_relative_yards,
+        ROUND(yards*1.0/pr_3_yards, 3) AS pr_3_relative_yards,
+        ROUND(yards*1.0/pr_4_yards, 3) AS pr_4_relative_yards,
+        ROUND(yards*1.0/pr_5_yards, 3) AS pr_5_relative_yards,
+        ROUND(yards*1.0/pr_6_yards, 3) AS pr_6_relative_yards, 
+		
+        CASE	WHEN going_main IN ('fast', 'firm') THEN 4
+				WHEN going_main IN ('good to firm') THEN 3.5
+				WHEN going_main IN ('standard', 'good') THEN 3
+				WHEN going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN going_main IN ('slow', 'soft') THEN 1
+                WHEN going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS going_numerical,
+        CASE	WHEN pr_1_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_1_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_1_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_1_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_1_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_1_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_1_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_1_going_numerical,
+        CASE	WHEN pr_2_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_2_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_2_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_2_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_2_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_2_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_2_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_2_going_numerical,
+        CASE	WHEN pr_3_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_3_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_3_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_3_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_3_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_3_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_3_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_3_going_numerical,
+        CASE	WHEN pr_4_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_4_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_4_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_4_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_4_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_4_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_4_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_4_going_numerical,
+        CASE	WHEN pr_5_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_5_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_5_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_5_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_5_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_5_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_5_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_5_going_numerical,
+        CASE	WHEN pr_6_going_main IN ('fast', 'firm') THEN 4
+				WHEN pr_6_going_main IN ('good to firm') THEN 3.5
+				WHEN pr_6_going_main IN ('standard', 'good') THEN 3
+				WHEN pr_6_going_main IN ('good to soft', 'good to yielding') THEN 2.5
+                WHEN pr_6_going_main IN ('yielding to soft', 'yielding') THEN 2
+                WHEN pr_6_going_main IN ('slow', 'soft') THEN 1
+                WHEN pr_6_going_main IN ('sloppy', 'heavy', 'very soft') THEN 1
+                ELSE 2.5
+		END AS pr_6_going_numerical,
+        
+        CASE	WHEN race_type_devised IN ('chase') THEN 4
+				WHEN race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS race_type_numerical,
+        CASE	WHEN pr_1_race_type_devised IN ('chase') THEN 4
+				WHEN pr_1_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_1_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_1_race_type_numerical,
+        CASE	WHEN pr_2_race_type_devised IN ('chase') THEN 4
+				WHEN pr_2_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_2_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_2_race_type_numerical,
+        CASE	WHEN pr_3_race_type_devised IN ('chase') THEN 4
+				WHEN pr_3_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_3_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_3_race_type_numerical,
+        CASE	WHEN pr_4_race_type_devised IN ('chase') THEN 4
+				WHEN pr_4_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_4_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_4_race_type_numerical,
+        CASE	WHEN pr_5_race_type_devised IN ('chase') THEN 4
+				WHEN pr_5_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_5_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_5_race_type_numerical,
+        CASE	WHEN pr_6_race_type_devised IN ('chase') THEN 4
+				WHEN pr_6_race_type_devised IN ('hurdle', 'jumps') THEN 3
+                WHEN pr_6_race_type_devised IN ('flat', 'devisedflat') THEN 1
+                ELSE 2
+		END AS pr_6_race_type_numerical,
+        
+        CASE	WHEN h.weather_grouped IN ('snowandhail') THEN 1
+				WHEN h.weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN h.weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN h.weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN h.weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS weather_numerical,
+        CASE	WHEN pr_1_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_1_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_1_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_1_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_1_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_1_weather_numerical,
+        CASE	WHEN pr_2_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_2_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_2_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_2_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_2_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_2_weather_numerical,
+        CASE	WHEN pr_3_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_3_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_3_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_3_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_3_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_3_weather_numerical,
+        CASE	WHEN pr_4_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_4_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_4_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_4_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_4_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_4_weather_numerical,
+        CASE	WHEN pr_5_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_5_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_5_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_5_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_5_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_5_weather_numerical,
+        CASE	WHEN pr_6_weather_grouped IN ('snowandhail') THEN 1
+				WHEN pr_6_weather_grouped IN ('wet', 'rain') THEN 2
+                WHEN pr_6_weather_grouped IN ('overcast', 'cloudy') THEN 4
+                WHEN pr_6_weather_grouped IN ('fine', 'dry') THEN 5
+                WHEN pr_6_weather_grouped IN ('sunny', 'bright') THEN 6
+                ELSE 3
+		END AS pr_6_weather_numerical
+
+FROM horses_data_combined_with_past_results h
+LEFT JOIN (SELECT weather_grouped, AVG(horse_time) AS weather_horse_time_rc FROM horses_data_combined_with_past_results GROUP BY weather_grouped) w ON h.weather_grouped = w.weather_grouped
+LEFT JOIN (SELECT going_grouped, AVG(horse_time) AS going_grouped_horse_time_rc FROM horses_data_combined_with_past_results GROUP BY going_grouped) g ON h.going_grouped = g.going_grouped
+LEFT JOIN (SELECT race_type, AVG(horse_time) AS race_type_horse_time_rc FROM horses_data_combined_with_past_results GROUP BY race_type) rt ON h.race_type = rt.race_type
+WHERE 1
+AND horse_time IS NOT NULL
+#AND pr_1_horse_time IS NOT NULL
+#AND pr_2_horse_time IS NOT NULL
+#AND pr_3_horse_time IS NOT NULL
+#AND pr_4_horse_time IS NOT NULL
+#AND pr_5_horse_time IS NOT NULL
+#AND pr_6_horse_time IS NOT NULL
+#AND pr_7_horse_time IS NOT NULL
+#AND pr_8_horse_time IS NOT NULL
+#AND pr_9_horse_time IS NOT NULL
+#AND pr_10_horse_time IS NOT NULL
+AND LOWER(country) IN ('scotland', 'england', 'northern ireland', 'eire', 'wales')
+#AND race_date > '2018-06-01'
+#LIMIT 100
+;
 
 
+# relevant features from jockey data to use in horse vs horse model
+SELECT *
+FROM jockeys_data_combined_no_nrs_with_past_results
+WHERE horse_time IS NOT NULL
+AND pr_1_finish_position_for_ordering = 999
+LIMIT 30;
 
-SELECT horse_name FROM horses_data WHERE horse_id IN (933132);
+SELECT * FROM jockeys_data_combined_no_non_runners LIMIT 20;
+
+SELECT * FROM training_data_6_relative_pr LIMIT 100;
+
+SELECT * FROM horses_data_combined_no_non_runners hd
+INNER JOIN (SELECT * FROM (SELECT horse_id, race_id, yards/horse_time as speed FROM horses_data_combined) sp1 WHERE speed < 5 LIMIT 100) sp
+ON hd.horse_id = sp.horse_id AND hd.race_id = sp.race_id
+LIMIT 100
+;

@@ -1,5 +1,5 @@
 """
-Historic data from sportinglife.com which provides
+Data from sportinglife.com which provides
 date, race type, number of runners, course, going, class, distance, horse name, age, weight, odds (sp and bsp), race value, finish position, distance won/lost by, OR
 
 get raceIds and general race info from:
@@ -13,6 +13,7 @@ import urllib
 import requests
 import json
 import time
+import datetime
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -23,13 +24,10 @@ import threading
 from multiprocessing import Queue, Pool
 
 
-
-'''
-first loop over past dates and get race details for each date
-the race ids can then be used after to get horse info
-'''
-# select dates (might want to check latest date available in mysql
-past_dates = pd.date_range(start='2021-03-16', end='2021-04-08')
+def add_days_to_date(date_string, num_days):
+    date = datetime.datetime.strptime(date_string, "%Y-%m-%d")
+    modified_date = date + datetime.timedelta(days=num_days)
+    return datetime.datetime.strftime(modified_date, "%Y-%m-%d")
 
 
 # functions to parse json for each date
@@ -143,8 +141,7 @@ def get_meeting_races(meeting_data):
     except:
         return []
 
-#get_meeting_races(getdict[0])
-        
+
 def get_days_races(day_data):
     try:
         day_output = []
@@ -155,27 +152,7 @@ def get_days_races(day_data):
     except:
         return []
 
-#get_days_races(getdict)
 
-print('getting races data')
-races_data = []
-for d in tqdm(past_dates):
-    try:
-        yyyymmdd = d.strftime('%Y')+'-'+d.strftime('%m')+'-'+d.strftime('%d')
-        dateurl = 'https://www.sportinglife.com/api/horse-racing/racing/racecards/'+yyyymmdd
-        datejson = urllib.request.urlopen(dateurl).read()
-        datedict = json.loads(datejson)
-        races_data = races_data + get_days_races(datedict)
-    except:
-        pass
-
-# convert to pandas df
-print('convert races data to df')
-races_df = pd.DataFrame(races_data, columns=['race_date', 'course', 'country', 'feed_source', 'surface', 'going', 'weather', 'meeting_id',
-                                             'meeting_order', 'race_time', 'age', 'distance', 'has_handicap', 'name', 'off_time',
-                                             'race_class', 'race_id', 'runners', 'winning_time'])
-
-# bit of data manipulation to make things easier later on
 def convert_to_yards(distance_measure):
     try:
         if 'm' in distance_measure:
@@ -189,6 +166,7 @@ def convert_to_yards(distance_measure):
     except:
         return 0
 
+
 def convert_distance(distance_string):
     try:
         split_string = distance_string.split()
@@ -197,7 +175,6 @@ def convert_distance(distance_string):
     except:
         return None
 
-races_df['yards'] = [convert_distance(dis) for dis in races_df['distance']]
 
 def convert_to_seconds(time_measure):
     try:
@@ -210,6 +187,7 @@ def convert_to_seconds(time_measure):
     except:
         return 0
 
+
 def convert_time(time_string):
     try:
         split_string = time_string.split()
@@ -218,25 +196,7 @@ def convert_time(time_string):
     except:
         return None
 
-races_df['winning_time_seconds'] = [convert_time(tim) for tim in races_df['winning_time']]
 
-# send to db
-print('sending races data to db')
-connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
-sql_engine = sqlalchemy.create_engine(connect_string)
-
-races_df.to_sql(name='races_data', con=sql_engine, schema='horses', if_exists='append', index=False)
-
-#data_to_inspect = races_df[:1000]
-
-
-
-
-'''
-now using the race ids, get info for each race
-note that some of the race info is duplicated in this table, but store anyway in case data is missing from either source
-'''
-print('getting horses data')
 # function to process race and horse data
 def get_horses_from_race(race_data):
     try:
@@ -613,7 +573,18 @@ def get_horses_from_race(race_data):
         return []
 
 
-# columns for df
+def read_url(url):
+    racejson = urllib.request.urlopen(url).read()
+    racedict = json.loads(racejson)
+    return racedict
+
+
+# columns for races df
+races_data_columns = ['race_date', 'course', 'country', 'feed_source', 'surface', 'going', 'weather', 'meeting_id',
+                      'meeting_order', 'race_time', 'age', 'distance', 'has_handicap', 'name', 'off_time',
+                      'race_class', 'race_id', 'runners', 'winning_time']
+
+# columns for horses df
 race_columns = ['race_date', 'race_id', 'course', 'surface', 'going', 'race_time', 'age', 'distance',
                 'has_handicap', 'off_time', 'race_class', 'runners', 'winning_time',
                 'prize1', 'prize2', 'prize3', 'stewards']
@@ -636,76 +607,3 @@ for i in range(6):
     past_results_columns = past_results_columns + ['pr_'+str(i+1)+col_name[2:] for col_name in past_results_columns_base]
 
 horse_data_columns = race_columns + bet_columns + horse_columns + past_results_columns
-
-
-# loop over race ids to get horse data for each
-print('working out what races still need horses data for')
-connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
-sql_engine = sqlalchemy.create_engine(connect_string)
-#raceids = races_df['race_id']
-raceids = pd.read_sql("SELECT race_id FROM races_data", con=sql_engine)
-raceids_already_got = pd.read_sql("SELECT DISTINCT race_id FROM horses_data", con=sql_engine)
-raceids_to_get = pd.read_sql("SELECT race_id FROM races_data WHERE race_id NOT IN (SELECT race_id FROM horses_data)", con=sql_engine)
-
-raceids_batch = raceids_to_get[:]
-print(f'getting horses data for {len(raceids_batch)} races')
-#time_0 = time.time()
-#horses_data = []
-#for i in tqdm(raceids_batch['race_id']):
-#    try:
-#        raceurl = 'https://www.sportinglife.com/api/horse-racing/race/'+str(i)
-#        racejson = urllib.request.urlopen(raceurl).read()
-#        racedict = json.loads(racejson)
-#        horses_data = horses_data + get_horses_from_race(racedict)
-#    except:
-#        pass
-#
-### multiprocessing attempt
-#time_1 = time.time()
-#time_1 - time_0
-#time_2 = time.time()
-raceurls = ['https://www.sportinglife.com/api/horse-racing/race/'+str(i) for i in raceids_batch['race_id']]
-
-def read_url2(url):
-    racejson = urllib.request.urlopen(url).read()
-    racedict = json.loads(racejson)
-    return racedict
-p = Pool(4)
-racedicts = p.map(read_url2, raceurls)
-
-horses_data = []
-for i in racedicts:
-    horses_data = horses_data + get_horses_from_race(i)
-
-#time_3 = time.time()
-#time_3 - time_2
-
-print('converting horses data to df and doing some data processing')
-horses_df = pd.DataFrame(horses_data, columns=horse_data_columns)
-#data_to_inspect = horses_df[:100]
-
-# add some useful columns
-horses_df['yards'] = [convert_distance(dis) for dis in horses_df['distance']]
-horses_df['pr_1_yards'] = [convert_distance(dis) for dis in horses_df['pr_1_distance']]
-horses_df['pr_2_yards'] = [convert_distance(dis) for dis in horses_df['pr_2_distance']]
-horses_df['pr_3_yards'] = [convert_distance(dis) for dis in horses_df['pr_3_distance']]
-horses_df['pr_4_yards'] = [convert_distance(dis) for dis in horses_df['pr_4_distance']]
-horses_df['pr_5_yards'] = [convert_distance(dis) for dis in horses_df['pr_5_distance']]
-horses_df['pr_6_yards'] = [convert_distance(dis) for dis in horses_df['pr_6_distance']]
-horses_df['winning_time_seconds'] = [convert_time(tim) for tim in horses_df['winning_time']]
-
-
-# send to db
-print('sending horses data to db')
-connect_string = 'mysql+pymysql://root:angunix1@localhost/horses'
-sql_engine = sqlalchemy.create_engine(connect_string)
-
-horses_df.to_sql(name='horses_data', con=sql_engine, schema='horses', if_exists='append', index=False)
-
-#sys.getsizeof(horses_df)/(1024*1024*1024)
-#test_transfer = horses_df.iloc[:2]
-#test_transfer['historical_odds'] = [str(ho) for ho in test_transfer['historical_odds']]
-#test_transfer.to_sql(name='horses_data', con=sql_engine, schema='horses', if_exists='append', index=False)
-
-# data_to_inspect = horses_df[:1000]
-# data_to_inspect2['finish_distance'].iloc[0][-1]=='½'

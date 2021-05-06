@@ -5,6 +5,8 @@ all_data/*
 tennis/all_data/*
 *.zip
 *.json
-
-
+*config.py
+*.pdf
+*.bz2
+*.tar
 
