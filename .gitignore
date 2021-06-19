@@ -9,4 +9,6 @@ tennis/all_data/*
 *.pdf
 *.bz2
 *.tar
-
+*.log
+*.pickle
+*/historic_data/*
