@@ -12,3 +12,5 @@ tennis/all_data/*
 *.log
 *.pickle
 */historic_data/*
+*.ipynb_checkpoints*
+*__pychache__*
