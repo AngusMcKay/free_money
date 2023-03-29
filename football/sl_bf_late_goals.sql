@@ -42,9 +42,45 @@ select min(datetime_utc) from testing_viable_matches;
 
 select * from testing_live_order_fails;
 
-select * from testing_live_order_results;
+select * from testing_live_order_results order by datetime_utc desc;
 
-SELECT * FROM testing_live_model_data_with_preds where team_a_name like '%Westerlo%';
+select * from testing_live_matches_df limit 10;
+
+select cast(match_date as date) as dt, count(distinct match_ref) as sl_matches
+from testing_live_matches_df
+group by 1;
+
+select cast(match_date as date) as dt, count(1) as bets_tried
+from testing_live_model_data_with_preds
+where action != 'None'
+group by 1;
+
+select cast(datetime_utc as date) as dt, count(1) as bets_actual
+from testing_live_order_results
+where order_status = 'EXECUTION_COMPLETE'
+group by 1;
+
+select t1.*, t2.bets_tried, t3.bets_actual from
+(select cast(match_date as date) as dt, count(distinct match_ref) as sl_matches
+from testing_live_matches_df
+group by 1) t1
+left join
+(select cast(match_date as date) as dt, count(1) as bets_tried
+from testing_live_model_data_with_preds
+where action != 'None'
+group by 1) t2 on t1.dt = t2.dt
+left join
+(select cast(datetime_utc as date) as dt, count(1) as bets_actual
+from testing_live_order_results
+where order_status = 'EXECUTION_COMPLETE'
+group by 1) t3 on t1.dt = t3.dt;
+
+
+select order_status, count(1)
+from testing_live_order_results where datetime_utc > '2023-01-18'
+group by 1;
+
+SELECT * FROM testing_live_model_data_with_preds where match_date >= '2023-01-14' and team_a_name like '%Antaly%';-- where team_a_name like '%Westerlo%';
 
 select * from testing_live_model_data_with_preds where market_id in ('1.208431813', '1.208431854', '1.208431858') and action <> 'None';
 
@@ -58,3 +94,7 @@ on o.market_id = m.market_id and o.datetime_utc = m.datetime_utc;
 
 select delay_time, count(1) from testing_live_model_data_with_preds group by 1;
 
+select s.*, p.next_prediction_time
+from testing_live_match_stats s
+left join testing_live_matches_at_prediction_times p on s.match_ref = p.match_ref and s.datetime_utc = p.datetime_utc
+;
