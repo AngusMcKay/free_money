@@ -14,3 +14,4 @@ tennis/all_data/*
 */historic_data/*
 *.ipynb_checkpoints*
 *__pychache__*
+*.pyc

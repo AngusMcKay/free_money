@@ -98,3 +98,8 @@ select s.*, p.next_prediction_time
 from testing_live_match_stats s
 left join testing_live_matches_at_prediction_times p on s.match_ref = p.match_ref and s.datetime_utc = p.datetime_utc
 ;
+
+SELECT table_schema "DB Name",
+        ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) "DB Size in MB" 
+FROM information_schema.tables 
+GROUP BY table_schema; 
